@@ -62,13 +62,14 @@ void accept_cb(io_element_t * elem, struct epoll_event ev)
     fprintf(stderr, "got the socket %d\n", listenfd);
     // set flags to check 
     uint32_t flags = EPOLLIN | EPOLLRDHUP | EPOLLHUP ;
-    io_element_t *p=new io_element(listenfd,flags,elem->io);
+    io_element_t *p=new io_element(listenfd,flags,elem->io,std::unordered_map<std::string,CALLBACK()>
+            {{"write",write_cb},{"read",read_cb},{"close",close_cb}});
     // add file descriptor to poll event
     poll_event_add(elem->io,listenfd,p);
     // set function callbacks 
-    p->read_callback = read_cb;
-    p->write_callback = write_cb;
-    p->close_callback = close_cb;
+//    p->read_callback = read_cb;
+//    p->write_callback = write_cb;
+//    p->close_callback = close_cb;
 }
 
 //time out function 
@@ -110,13 +111,15 @@ int main()
     io_service_t pe(1000);
     // set timeout callback
     pe.timeout_callback = timeout_cb;
-    io_element_t *p = new io_element(sock,EPOLLIN,&pe);
+    io_element_t *p = new io_element(sock,EPOLLIN,&pe,std::unordered_map<std::string,CALLBACK()>
+            {{"accept",accept_cb},{"close",close_cb}}
+    );
     // add sock to poll event
     poll_event_add(&pe, sock, p);
     // set callbacks
     //p->read_callback = read_cb;
-    p->accept_callback = accept_cb;
-    p->close_callback = close_cb;
+//    p->accept_callback = accept_cb;
+//    p->close_callback = close_cb;
     // enable accept callback
 //    p->cb_flags |= ACCEPT_CB;
     p->sc_flag(ACCEPT_CB);

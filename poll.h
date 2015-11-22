@@ -46,7 +46,7 @@ struct io_element {
     void io_element_delete();
 
 
-    io_element(int, uint32_t, io_service *);
+    io_element(int, uint32_t, io_service *,std::unordered_map <std::string,CALLBACK()>);
 
 
 };

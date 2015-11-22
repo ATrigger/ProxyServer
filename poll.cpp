@@ -21,17 +21,26 @@ void io_element::remove_flag(int flag){
 
 }
 
-io_element::io_element(int fd, uint32_t events, io_service *io) {
+io_element::io_element(int fd, uint32_t events, io_service *io,std::unordered_map <std::string,CALLBACK()> func) {
 
     INFO("Creating a new poll event element");
+    std::unordered_map<std::string,CALLBACK() *> callbacks
+            {{"write",&this->write_callback},
+             {"read",&this->read_callback},
+             {"close",&this->close_callback},
+             {"accept",&this->accept_callback},
+                    {"connect",&this->connect_callback}};
     this->io = io;
     this->fd = fd;
     this->events = events;
+    for(auto &elem:func){
+        *callbacks[elem.first]=elem.second;
+    }
 }
 
 void io_element::io_element_delete() {
     INFO("Deleting a poll event element");
-    free(this);
+    delete this;
 }
 
 
@@ -49,7 +58,7 @@ io_service::io_service(int timeout) {
 void poll_event_delete(io_service_t *poll_event) {
     INFO("deleting a io_service");
     close(poll_event->epoll_fd);
-    free(poll_event);
+    delete poll_event;
 }
 
 int poll_event_add(io_service_t *poll_event,int fd,io_element_t *poll_element) {

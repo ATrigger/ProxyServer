@@ -1,9 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module type="CPP_MODULE" version="4">
   <component name="NewModuleRootManager">
+    <content url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/Debug/Makefile">
+      <sourceFolder url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/Debug/Makefile" isTestSource="false" />
+    </content>
+    <content url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/MinSizeRel/Makefile">
+      <sourceFolder url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/MinSizeRel/Makefile" isTestSource="false" />
+    </content>
+    <content url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/RelWithDebInfo/Makefile">
+      <sourceFolder url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/RelWithDebInfo/Makefile" isTestSource="false" />
+    </content>
+    <content url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/Release/Makefile">
+      <sourceFolder url="file://$USER_HOME$/.clion11/system/cmake/generated/951ab88b/951ab88b/Release/Makefile" isTestSource="false" />
+    </content>
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/CMakeLists.txt" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/Makefile" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/debug.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/poll.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/poll.h" isTestSource="false" />
