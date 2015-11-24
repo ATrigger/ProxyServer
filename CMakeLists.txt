@@ -8,6 +8,6 @@ set(SOURCE_FILES
     Makefile
         poll.cpp
     poll.h
-    test.cpp)
+    test.cpp server.cpp server.h client.cpp client.h)
 
 add_executable(Poll_Event ${SOURCE_FILES})
