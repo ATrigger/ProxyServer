@@ -1,52 +1,14 @@
-#include "poll.h"
+#ifndef _IOSERVICE_CPP
+#define _IOSERVICE_CPP
+
+#include "io_service.h"
+#include "io_element.h"
+#include "server.h"
 #include "debug.h"
-#include <unordered_map>
 
-#include <stdlib.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <string.h>
-#include<unistd.h>
-
-void io_element::add_flag(int flag){
-    events|=flag;
-    poll_event_add(io,fd,this);
-
-}
-void io_element::remove_flag(int flag){
-    events&=~flag;
-    poll_event_add(io,fd,this);
-
-}
-
-io_element::io_element(int fd, uint32_t events, io_service *io,std::unordered_map <std::string,CALLBACK()> func) {
-
-    INFO("Creating a new poll event element");
-    std::unordered_map<std::string,CALLBACK() *> callbacks
-            {{"write",&this->write_callback},
-             {"read",&this->read_callback},
-             {"close",&this->close_callback},
-             {"accept",&this->accept_callback},
-                    {"connect",&this->connect_callback}};
-    this->io = io;
-    this->fd = fd;
-    this->events = events;
-    for(auto &elem:func){
-        *callbacks[elem.first]=elem.second;
-    }
-}
-
-void io_element::io_element_delete() {
-    INFO("Deleting a poll event element");
-    delete this;
-}
-
-
-io_service::io_service(int timeout) {
+io_service::io_service(size_t timeout, std::function<int(io_service *)> func) {
     this->table = hashmap();
-
+    this->timeout_callback = func;
     this->data = NULL;
     this->timeout = timeout;
     this->epoll_fd = epoll_create(MAX_EVENTS);
@@ -55,64 +17,71 @@ io_service::io_service(int timeout) {
 }
 
 
-void poll_event_delete(io_service_t *poll_event) {
+void poll_event_delete(io_service *poll_event) {
     INFO("deleting a io_service");
     close(poll_event->epoll_fd);
     delete poll_event;
 }
 
-int poll_event_add(io_service_t *poll_event,int fd,io_element_t *poll_element) {
-    io_element_t *elem = NULL;
-    elem = (io_element_t *) poll_event->table[fd];
+int io_service::addOrUpdate_event(int fd, io_element *poll_element) {
+    io_element *elem = NULL;
+    std::lock_guard<std::mutex> lcg(tM);
+    elem = (io_element *) table[fd];
+
     if (elem) {
+        lcg.~lock_guard();
         LOG("fd (%d) already added updating flags", fd);
         struct epoll_event ev;
         memset(&ev, 0, sizeof(struct epoll_event));
         ev.data.fd = fd;
         ev.events = poll_element->events;
-        return epoll_ctl(poll_event->epoll_fd, EPOLL_CTL_MOD, fd, &ev);
+        return epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev);
     }
     else {
-
-        poll_event->table[fd] = poll_element;
+        table[fd] = poll_element;
+        lcg.~lock_guard();
         LOG("Added fd(%d)", fd);
         struct epoll_event ev;
         memset(&ev, 0, sizeof(struct epoll_event));
         ev.data.fd = poll_element->fd;
         ev.events = poll_element->events;
-        return epoll_ctl(poll_event->epoll_fd, EPOLL_CTL_ADD, fd, &ev);
+        return epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &ev);
     }
 }
 
 
-int poll_event_remove(io_service_t *poll_event, int fd) {
-    poll_event->table.erase(fd);
+int io_service::remove_event(int fd) {
+    std::lock_guard<std::mutex> lcg(tM);
+    table.erase(fd);
+    lcg.~lock_guard();
     close(fd);
-    epoll_ctl(poll_event->epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
     return 0;
 }
 
 
-int poll_event_process(io_service_t *poll_event) {
+int io_service::process() {
     struct epoll_event events[MAX_EVENTS];
-    int fds = epoll_wait(poll_event->epoll_fd, events, MAX_EVENTS, poll_event->timeout);
+
+    int fds = epoll_wait(epoll_fd, events, MAX_EVENTS, timeout);
     if (fds == 0) {
-        INFO("event loop timed out");
-        if (poll_event->timeout_callback) {
-            if (poll_event->timeout_callback(poll_event)) {
+        //INFO("event loop timed out");
+        if (timeout_callback) {
+            if (timeout_callback(this)) {
                 //Если возвращается что-то кроме 0 -> всем начинаем писать закрытие соединений
-                for(auto elem:poll_event->table){
+                for (auto elem:table) {
                     elem.second->add_flag(EPOLLOUT);
                 }
+
                 //return -1;
             }
         }
     }
     int i = 0;
     for (; i < fds; i++) {
-        io_element_t *value = NULL;
+        io_element *value = NULL;
 
-        if (poll_event->table.count(events[i].data.fd) != 0 && (value = poll_event->table[events[i].data.fd]) != NULL) {
+        if (table.count(events[i].data.fd) != 0 && (value = table[events[i].data.fd]) != NULL) {
             LOG("started processing for event id(%d) and sock(%d)", i, events[i].data.fd);
             // when data avaliable for read or urgent flag is set
             if ((events[i].events & EPOLLIN) || (events[i].events & EPOLLPRI)) {
@@ -133,14 +102,14 @@ int poll_event_process(io_service_t *poll_event) {
                     value->connect_callback(value, events[i]);
                 /// read callback in any case
                 if (value->read_callback)
-                    value->read_callback( value, events[i]);
+                    value->read_callback(value, events[i]);
             }
             // when write possible
             if (events[i].events & EPOLLOUT) {
                 LOG("found EPOLLOUT for event id(%d) and sock(%d)", i, events[i].data.fd);
                 value->cur_event &= EPOLLOUT;
                 if (value->write_callback)
-                    value->write_callback( value, events[i]);
+                    value->write_callback(value, events[i]);
             }
             // shutdown or error
             if ((events[i].events & EPOLLRDHUP) || (events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
@@ -153,22 +122,24 @@ int poll_event_process(io_service_t *poll_event) {
                     value->cur_event &= EPOLLERR;
                 }
                 if (value->close_callback)
-                    value->close_callback( value, events[i]);
+                    value->close_callback(value, events[i]);
             }
         }
-        else
-        {
+        else {
             LOG("WARNING: NOT FOUND hash table value for event id(%d) and sock(%d)", i, events[i].data.fd);
         }
     }
     return 0;
 }
 
-void poll_event_loop(io_service_t &poll_event) {
+void io_service::loop() {
     INFO("Entering the main event loop for epoll lib");
-    while (!poll_event_process(&poll_event));
+    while (!process());
 }
 
-void io_element::sc_flag(int flag) {
-    this->cb_flags|=flag;
+void io_service::setTimeoutCallback(std::function<int(io_service *)> func) {
+    this->timeout_callback = func;
 }
+
+
+#endif

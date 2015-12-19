@@ -8,46 +8,101 @@
 
 #include<sys/socket.h>
 #include<netinet/in.h>
-#include "poll.h"
+#include <iostream>
+#include "io_element.h"
 #include "debug.h"
+#include "io_service.h"
+#include "server.h"
+#include "HTTP.h"
+#include "client.h"
 
-static const int buf_size = 1024;
+
+static const int buf_size = 2048;
 
 void write_cb(io_element *elem, struct epoll_event ev) {
 
-    char buf[buf_size];
-    char format[128];
-    sprintf(buf, "HTTP/1.1 200 OK\\r\\nConnection: Close\r\n\r\n\0");
-    int val = write(elem->fd, buf, strlen(buf));
+    int val = write(elem->fd, elem->data.rqOrs.c_str(), elem->data.rqOrs.length());
     if (val > 0) {
-        io_element *p;
         elem->remove_flag(EPOLLOUT);
+        elem->data.rqOrs.clear();
         printf("send data: %d\n", elem->fd);
-        elem->close_callback(elem, ev);
-        elem->io_element_delete();
+//        elem->close_callback(elem, ev);
+//        elem->io_element_delete();
     }
 }
 
+void connected_cb(io_element *elem, struct epoll_event ev) {
+    INFO("CONNECTED");
+    //std::pair<sockaddr*, socklen_t > *data = (std::pair<sockaddr*, socklen_t > *)elem->data.anydata;
+
+    //delete data;
+
+}
+
+void read_client_cb(io_element *elem, struct epoll_event ev) {
+    INFO("READ AS CLIENT");
+}
+
+void write_client_cb(io_element *elem, struct epoll_event ev) {
+    INFO("WRITE AS CLIENT");
+    int val = send(elem->fd,elem->data.rqOrs.c_str(),elem->data.rqOrs.size(),0);
+    if(val >0){
+        printf("send request: %d\n", elem->fd);
+
+    }
+    else {
+        INFO("SEND FAILED");
+        LOG("%d",errno);
+
+    }
+    elem->remove_flag(EPOLLOUT);
+}
+void close_cb(io_element *elem, struct epoll_event ev) {
+    INFO("in close_cb");
+    printf(" disconnected %d\n", elem->fd);
+
+    elem->io->remove_event(elem->fd);
+}
 void read_cb(io_element *elem, struct epoll_event ev) {
 
     INFO("in read_cb");
 
     char buf[buf_size];
-    int val = read(elem->fd, buf, buf_size);
-    if (val > 0) {
-        elem->add_flag(EPOLLOUT);
+    ssize_t val;
+    if ((val = read(elem->fd, buf, buf_size)) != -1) {
+
         buf[val] = '\0';
+        elem->data.rqOrs.append(buf);
         printf(" received data -> %s\n", buf);
     }
+    if(strlen(buf)==0) return;
+
+  /*  elem->data.parsed = HTTP::parse(elem->data.rqOrs);
+    std::string host = elem->data.parsed["Host"];
+    auto x = host.find(':');
+    std::string hostname = host.substr(0, x);
+    std::string port = host.substr(x+1);
+    if (std::regex_match(hostname, HTTP::isIp)) {
+        //Тред не нужон
+        connection in(hostname, port, {{"connect", connected_cb},
+                                             {"read",    read_client_cb},
+                                             {"write",   write_client_cb},{"close",close_cb}}, *elem->io);
+        elem->data.relative=in.getpoll();
+        elem->data.relative->data.parsed =elem->data.parsed;
+        elem->data.relative->data.relative=(std::shared_ptr<io_element>(elem));
+        elem->io->add_event(in);
+    }
+    else if (!elem->io->dns.count(host)) {
+        //нужен тред
+    }
+    else {
+        //Тред не нужон.
+    }*/
+    elem->add_flag(EPOLLOUT);
 }
 
 
-void close_cb(io_element *elem, struct epoll_event ev) {
-    INFO("in close_cb");
-    printf(" disconnected %d\n", elem->fd);
 
-    elem->io->remove_event( elem->fd);
-}
 
 void accept_cb(io_element *elem, struct epoll_event ev) {
     INFO("in accept_cb");
@@ -59,12 +114,12 @@ void accept_cb(io_element *elem, struct epoll_event ev) {
     fprintf(stderr, "got the socket %d\n", listenfd);
 
     uint32_t flags = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
-    io_element *p = new io_element(listenfd, flags, elem->io, std::unordered_map<std::string, CALLBACK() >
+    io_element *p = new io_element(listenfd, 0, flags, elem->io, std::unordered_map<std::string, CALLBACK() >
             {{"write", write_cb},
              {"read",  read_cb},
              {"close", close_cb}});
 
-    elem->io->add_event( listenfd, p);
+    elem->io->addOrUpdate_event(listenfd, p);
 
 
 }
@@ -81,8 +136,8 @@ int timeout_cb(io_service *poll_event) {
 
         int *value = (int *) poll_event->data;
         *value += 1;
-        LOG("time out number %d", *value);
-        printf("tick (%d)\n", *value);
+        //LOG("time out number %d", *value);
+        //printf("tick (%d)\n", *value);
 
     }
     return 0;
@@ -90,30 +145,12 @@ int timeout_cb(io_service *poll_event) {
 
 int main() {
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in svr_addr, clt_addr;
-    memset(&svr_addr, 0, sizeof(svr_addr));
-    svr_addr.sin_family = AF_INET;
-    svr_addr.sin_addr.s_addr = htons(INADDR_ANY);
-    svr_addr.sin_port = htons(8080);
-    bind(sock, (struct sockaddr *) &svr_addr, sizeof(svr_addr));
-    listen(sock, 10);
-    fcntl(sock, F_SETFL, O_NONBLOCK);
-
-
-    io_service pe(1000);
-
-    pe.setTimeoutCallback(timeout_cb);
-    io_element *p = new io_element(sock, EPOLLIN, &pe, std::unordered_map<std::string, CALLBACK() >
+    io_service pe(1000, timeout_cb);
+    acceptor ss(8080, 10, std::unordered_map<std::string, CALLBACK() >
             {{"accept", accept_cb},
-             {"close",  close_cb}}
-    );
+             {"close",  close_cb}}, pe);
 
-    pe.add_event(sock, p);
-
-
-    p->sc_flag(ACCEPT_CB);
-
+    pe.add_event(ss);
     io_start(pe);
 
     return 0;
