@@ -2,17 +2,8 @@
 <module type="CPP_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
-      <sourceFolder url="file://$MODULE_DIR$/debug.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/client.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/io_element.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/server.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/test.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/io_service.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/server.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/CMakeLists.txt" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/io_service.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/connection.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/address.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/posix_sockets.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/posix_sockets.cpp" isTestSource="false" />
@@ -24,17 +15,16 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/main_proxy.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/io_service.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/events.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/connection.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/acceptor.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/acceptor.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/events.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/outstring.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/epoll_error.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/debug.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/connection.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/client.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/io_element.h" isTestSource="false" />
     </content>
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module-library">

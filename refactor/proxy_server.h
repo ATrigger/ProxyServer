@@ -28,13 +28,20 @@ class proxy_server
 {
     struct inbound;
     struct outbound;
+    struct resolverNode
+    {
+        resolverNode(std::string _host, ipv4_endpoint to, bool flag): host(_host), resolvedHost(to), ok(flag){}
+        std::string host;
+        ipv4_endpoint resolvedHost;
+        bool ok;
+    };
     struct inbound
     {
         inbound(proxy_server *parent);
         void handleread();
         void handlewrite();
         void sendBadRequest();
-        bool resolveFinished(std::string domain,ipv4_address);
+        bool resolveFinished(resolverNode);
         void sendDomainForResolve(std::string);
     private:
         friend struct outbound;
@@ -51,22 +58,20 @@ class proxy_server
     {
         outbound(io::io_service&,ipv4_endpoint,inbound *);
         void handlewrite();
-        void handleread();
-        void handleContentRead();
+        void onRead();
     private:
         friend struct inbound;
         ipv4_endpoint remote;
         connection socket;
         inbound* assigned;
         std::shared_ptr<response> resp;
-        std::string host;
-        std::string URI;
+        std::queue<outstring> output;
     };
 public:
     proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint);
     ~proxy_server();
     ipv4_endpoint local_endpoint() const;
-    typedef std::queue<std::pair<std::string, ipv4_address>> Resolvequeue;
+    typedef std::queue<resolverNode> resolveQueue_t;
     struct FirstFound
     {
         typedef bool result_type;
@@ -78,12 +83,12 @@ public:
             return val;
         }
     };
-    boost::signals2::signal<bool (std::string,ipv4_address), FirstFound> resolver;
+    boost::signals2::signal<bool (resolverNode), FirstFound> resolver;
     boost::lockfree::queue<std::string*,boost::lockfree::capacity<30>> domains;
     boost::condition_variable newTask;
     boost::mutex resolveMutex;
     std::mutex distributeMutex;
-    Resolvequeue resolverFinished;
+    resolveQueue_t resolverFinished;
     events resolveEvent;
     io::io_service *batya;
     boost::thread_group resolvers;

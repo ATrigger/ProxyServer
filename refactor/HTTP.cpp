@@ -134,7 +134,7 @@ void request::parse_first_line()
 std::string request::get_request_text()
 {
     get_host();
-    std::string first_line = method + " " + get_URI() + " " + http_version + "\r\n";
+    std::string first_line = method + " " + URI + " " + http_version + "\r\n";
     std::string headers;
     for (auto it : this->headers) {
         if (it.first != "Proxy-Connection")

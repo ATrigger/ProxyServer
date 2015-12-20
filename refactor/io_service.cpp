@@ -66,7 +66,15 @@ int io::io_service::loop()
     }
     for(int i=0;i<count;++i){
         auto &ee = events[i];
-        static_cast<io_entry*>(ee.data.ptr)->callback(ee.events);
+        try {
+            static_cast<io_entry *>(ee.data.ptr)->callback(ee.events);
+        }
+        catch(std::exception &e){
+            LOG("%s happened on EPOLL execution",e.what());
+        }
+        catch(...){
+            INFO("Something happened on EPOLL execution");
+        }
     }
     return 0;
 }

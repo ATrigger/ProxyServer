@@ -37,7 +37,7 @@ public:
     static std::string placeholder()
     {
         std::string request = std::string(
-            "HTTP/1.1 400 Bad Request\r\nServer: shit\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 166\r\nConnection: close\r\n");
+            "HTTP/1.1 400 Bad Request\r\nServer: shit\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 164\r\nConnection: close\r\n");
         std::ostringstream out(request);
         out << "\r\n";
         out << "<html>";

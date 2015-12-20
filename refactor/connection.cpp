@@ -10,25 +10,31 @@
 #include "posix_sockets.h"
 #include "debug.h"
 connection::connection(int _fd, io::io_service &ep, std::function<void()> end)
-    : fd(_fd), on_disconnect(std::move(end)),
-      ioEntry(std::make_shared<io::io_entry>(ep, _fd, 0, [this](uint32_t events)
+    : fd(_fd), on_disconnect(std::move(end)),destroyed(nullptr),
+      ioEntry(std::make_shared<io::io_entry>(ep, _fd, errFlags, [this](uint32_t events)
       {
+          bool is_destroyed = false;
+          destroyed = &is_destroyed;
           try {
               if (events & errFlags) {
                   on_disconnect();
-                  return;
+                  if(is_destroyed) return;
               }
-              if (events & EPOLLIN){
+              if (events & EPOLLIN) {
                   on_read();
+                  if(is_destroyed) return;
               }
-              if(events & EPOLLOUT){
+              if (events & EPOLLOUT) {
                   on_write();
+                  if(is_destroyed) return;
               }
           }
           catch (...) {
+              destroyed = nullptr;
               INFO("EPOLL execution failed");
               __throw_exception_again;
           }
+          destroyed=nullptr;
       }))
 {
 
@@ -55,7 +61,7 @@ void connection::write_all_over_connection(const char *data, size_t size)
 }
 connection connection::connect(io::io_service &ep, ipv4_endpoint const &remote, connection::callback on_disconnect)
 {
-    int fd = make_socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK);
+    int fd = make_socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK);
     connect_socket(fd, remote.port_net, remote.addr_net);
     connection res{fd, ep, std::move(on_disconnect)};
     return res;
@@ -63,13 +69,14 @@ connection connection::connect(io::io_service &ep, ipv4_endpoint const &remote, 
 }
 void connection::forceDisconnect()
 {
+    LOG("Forced disconnect on %d fd",getFd());
     on_disconnect();
 }
 int connection::get_available_bytes()
 {
-    int n =-1;
-    if(ioctl(fd,FIONREAD,&n)<0){
-        LOG("IOCTL failed: %d. No bytes available. Returning 0",errno);
+    int n = -1;
+    if (ioctl(fd, FIONREAD, &n) < 0) {
+        LOG("IOCTL failed: %d. No bytes available. Returning 0", errno);
         return 0;
     }
     return n;

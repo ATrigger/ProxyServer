@@ -6,82 +6,61 @@
 #include "debug.h"
 
 proxy_server::inbound::inbound(proxy_server *parent)
-    : parent(parent), socket(parent->ss.accept([this]
-                                               {
-                                                   LOG("Disconnected sock %d", this->socket.getFd());
-                                                   int error = 0;
-                                                   socklen_t errlen = sizeof(error);
-                                                   if (getsockopt(this->socket.getFd(),
-                                                                  SOL_SOCKET,
-                                                                  SO_ERROR,
-                                                                  (void *) &error,
-                                                                  &errlen) == 0) {
-                                                       LOG("error = %s\n", strerror(error));
-                                                   }
-                                                   this->parent->connections.erase(this);
-                                               }))
+    : parent(parent),
+      socket(parent->ss.accept(
+          [this]
+          {
+              LOG("Disconnected sock %d", this->socket.getFd());
+              int error = 0;
+              socklen_t errlen = sizeof(error);
+              if (getsockopt(this->socket.getFd(),
+                             SOL_SOCKET,
+                             SO_ERROR,
+                             (void *) &error,
+                             &errlen) == 0) {
+                  LOG("error = %s\n", strerror(error));
+              }
+              if (assigned) assigned->socket.forceDisconnect();
+              this->parent->connections.erase(this);
+          }))
 {
     socket.setOn_read(std::bind(&inbound::handleread, this));
-    socket.setOn_write(std::bind(&inbound::handlewrite, this));
+
 }
 
 void proxy_server::inbound::handleread()
 {
     int n = socket.get_available_bytes();
     LOG("Bytes available: %d ", n);
-    if(n < 1) {
+    if (n < 1) {
         INFO("No bytes available, yet EPOLLIN came. Disconnected");
         socket.forceDisconnect();
+        return;
     }
-    char buff[n+1];
+    char buff[n + 1];
     auto res = socket.read_over_connection(buff, n);
-    buff[n]='\0';
-    if(res == -1){
-        socket.forceDisconnect();
-        throw_error(errno,"Inbound::Handeread()");
+    buff[n] = '\0';
+    if (res == -1) {
+        throw_error(errno, "Inbound::Handeread()");
     }
-    if(!requ){
+    if (res == 0) {
+        socket.forceDisconnect();
+        return;
+    }
+    if (!requ) {
         requ = std::make_shared<request>(std::string(buff));
     }
     else {
         requ->add_part(std::string(buff));
     }
-    std::cout<<requ->get_request_text()<<std::endl;
-/*
-    while (true) {
-        ssize_t res = socket.read_over_connection(buf, 1500);
-        if (res == -1 && errno != EWOULDBLOCK) throw_error(errno, "inbound::read()");
-        else if (res == -1 && request.length() != 0) { break; }
-        else if (res == -1) { return; }
-        else if (res == 0) {
-            INFO("REPORTED EOF");
-            socket.forceDisconnect();
-            return;
-        }
-        buf[res] = '\0';
-        request += std::string(buf);
+    if (requ->get_state() == request::FAIL) {
+        sendBadRequest();
     }
-    socket.setOn_read(connection::callback());
-    size_t border = request.find("\r\n\r\n");
-    header = request.substr(0, border + 4);
-    body = request.substr(border + 4);
-    request.clear();
-    auto type = header.substr(0, 4);
-    if (type.find("POST") == header.npos && type.find("GET") == header.npos) return sendBadRequest();
-    parsedHeader = HTTP::parse(header);
-    sendDomainForResolve(parsedHeader["Host"]);
-    //this->resolverConnection = parent->resolver.connect(boost::bind(&inbound::resolveFinished,this,_1));
-    this->resolverConnection = parent->resolver.connect([this](std::string d, ipv4_address adr)
-                                                        { return this->resolveFinished(d, adr); });
-    auto absolute = header.find(parsedHeader["Host"]);
-    if (absolute != header.npos) {
-        auto spc = header.find(' ') + 1;
-        std::cout << header << std::endl;
-        header = (header.substr(0, spc) + header.substr(absolute + parsedHeader["Host"].length()));
-        std::cout << header << std::endl;
+    if (requ->get_state() == request::BODYFULL) {
+        std::cout << requ->get_request_text() << std::endl;
+        sendDomainForResolve(requ->get_host());
+        //socket.setOn_read(connection::callback());
     }
-    //std::cout << request << std::endl;
-    //std::cout << header << std::endl << body << std::endl;*/
 }
 void proxy_server::inbound::sendBadRequest()
 {
@@ -91,34 +70,35 @@ void proxy_server::inbound::sendBadRequest()
 }
 void proxy_server::inbound::sendDomainForResolve(std::string string)
 {
-  /*  auto p = string.find(':');
-    if (p != string.npos) {
-        host = string.substr(0, p);
-        port = string.substr(p + 1);
-    }
-    else {
-        host = string;
-        port = "80";
-    }
-    if (parent->dnsCache.count(host) != 0) {
-        parent->resolverFinished.push(make_pair(host, parent->dnsCache[host].address()));
+    if (parent->dnsCache.count(string) != 0) {
+        parent->resolverFinished.push({string, parent->dnsCache[string], true});
         parent->resolveEvent.add();
     }
     else {
-        parent->domains.push(new std::string(host));
+        parent->domains.push(new std::string(string));
+        parent->newTask.notify_one();
     }
-    parent->newTask.notify_one();
-    return;*/
+    this->resolverConnection =
+        parent->resolver.connect(
+            [this](resolverNode in)
+            { return this->resolveFinished(in); });
+    return;
 }
 
 void proxy_server::inbound::handlewrite()
 {
     if (!output.empty()) {
         auto string = &output.front();
-        size_t written = socket.write_over_connection(string->get(),string->size());
+        size_t written = socket.write_over_connection(string->get(), string->size());
         string->operator+=(written);
-        if(*string)
+        if (*string) {
             output.pop();
+            INFO("Written all");
+        }
+    }
+    if (output.empty()) {
+        socket.setOn_write(connection::callback());
+        //socket.setOn_read(std::bind(&inbound::handleread, this));
     }
 }
 
@@ -127,11 +107,11 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
       resolveEvent(ep, [this](uint32_t)
       {
           std::unique_lock<std::mutex> distribution(distributeMutex, std::try_to_lock_t());
-          Resolvequeue copy;
+          resolveQueue_t copy;
           std::swap(copy, resolverFinished);
           distribution.unlock();
           while (!copy.empty()) {
-              resolver(copy.front().first, copy.front().second);
+              resolver(copy.front());
               copy.pop();
           }
       })
@@ -149,24 +129,30 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
                     { return !this->domains.empty() || this->destroyThreads; });
                     if (destroyThreads) return;
                     std::string *domain;
-                    std::string port, dom;
+                    std::string port, name, input;
                     this->domains.pop(domain);
-                    dom = *domain;
+                    input = *domain;
+                    name = input;
                     port = "80";
                     delete domain;
+                    auto it = input.find(':');
+                    if (it != input.npos) {
+                        port = input.substr(it + 1);
+                        name = input.substr(0, it);
+                    }
                     struct addrinfo *r, hints;
                     bzero(&hints, sizeof(hints));
                     hints.ai_family = AF_INET;
                     hints.ai_socktype = SOCK_STREAM;
                     std::unique_lock<std::mutex> distribution(distributeMutex, std::defer_lock_t());
-                    int res = getaddrinfo(dom.data(), port.data(), &hints, &r);
+                    int res = getaddrinfo(name.data(), port.data(), &hints, &r);
                     if (res != 0) {
 
-                        LOG("Resolve failed:%s(%s). Signal proceed.",
-                            dom.data(),
+                        LOG("Resolve failed:%s(%s:%s)(%s). Signal proceed.",
+                            input.data(), name.data(), port.data(),
                             gai_strerror(res));
                         distribution.lock();
-                        resolverFinished.push(make_pair(dom, ipv4_address()));
+                        resolverFinished.push({input, {}, false});
                         resolveEvent.add(1);
                         continue;
                     }
@@ -182,14 +168,15 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
                     if (res != 0) {
                         LOG("Cannot transform to IP: %d Signal proceed", res);
                         distribution.lock();
-                        resolverFinished.push(make_pair(dom, ipv4_address()));
+                        resolverFinished.push({input, {}, false});
                         resolveEvent.add(1);
                         continue;
                     }
-                    LOG("Looks like i got IP: %s for %s", buffer, dom.c_str());
+                    LOG("Looks like i got IP: %s for %s", buffer, input.c_str());
 
                     distribution.lock();
-                    resolverFinished.push(make_pair(dom, ipv4_address(std::string(buffer))));
+                    resolverFinished.push({input, {atoi(port.c_str()), ipv4_address(std::string(buffer))},
+                                           true}/*make_pair(input, ipv4_address(std::string(buffer)))*/);
                     resolveEvent.add(1);
                 }
             });
@@ -209,7 +196,7 @@ void proxy_server::on_new_connection()
 }
 proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
     :
-    remote(endpoint.port(), endpoint.address()), socket(connection::connect(service, endpoint, [&]()
+    remote(endpoint), socket(connection::connect(service, endpoint, [&]()
 {
     LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
     int error = 0;
@@ -220,28 +207,28 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
                    (void *) &error,
                    &errlen) == 0) {
         LOG("error = %s\n", strerror(error));
+        if (error != 0) assigned->sendBadRequest();
     }
     assigned->assigned.reset();
 }))
 {
     assigned = ass;
-//    response = ass->header + ass->body;
+    output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
 }
-bool proxy_server::inbound::resolveFinished(std::string domain, ipv4_address result)
+bool proxy_server::inbound::resolveFinished(resolverNode result)
 {
-   // if (domain != host) return false;
-    INFO("eventfd success");
+    if (result.host != requ->get_host()) return false;
     this->resolverConnection.disconnect();
-    if (result.address_network() == 0) {
+    if (!result.ok) {
         output.push(HTTP::notFound());
         socket.setOn_write(std::bind(&inbound::handlewrite, this));
+        socket.setOn_read(std::bind(&inbound::handleread, this));
     }
     else {
-        //uint16_t port = static_cast<uint16_t>(atoi(this->port.c_str()));
-      //  auto remote = ipv4_endpoint(port, result);
-       // parent->dnsCache[domain] = remote;
-      //  assigned = std::make_shared<outbound>(*parent->batya, remote, this);
+        parent->dnsCache[result.host] = result.resolvedHost;
+        assigned = std::make_shared<outbound>(*parent->batya, result.resolvedHost, this);
+        requ.reset();
     }
     return true;
 }
@@ -251,48 +238,38 @@ proxy_server::~proxy_server()
     newTask.notify_all();
     resolvers.join_all();
 }
-void proxy_server::outbound::handleread()
+void proxy_server::outbound::onRead()
 {
     int n = socket.get_available_bytes();
-    char buf[n];
-//    while (true) {
-//        ssize_t res = socket.read_over_connection(buf, 200);
-//        if (res == -1) {
-//            assigned->socket.setOn_read(std::bind(&inbound::handleread, assigned));
-//            break;
-//        }
-//        buf[res] = '\0';
-//        assigned->socket.write_over_connection(buf, res);
-//        if (res == 0) {
-//            socket.forceDisconnect();
-//            INFO("Reported EOF");
-//            assigned->socket.setOn_read(std::bind(&inbound::handleread, assigned));
-//            return;
-//        }
-//        //response += std::string(buf);
-//    }
+    LOG("Bytes available: %d ", n);
+    char buf[n + 1];
     ssize_t res = socket.read_over_connection(buf, n);
     if (res == -1) {
-        socket.forceDisconnect();
-        LOG("failed %d", errno);
-    }
-    if (res == 0) {
-        INFO("Done reading answer");
-        socket.forceDisconnect();
+        throw_error(errno, "onRead()");
         return;
     }
-    assigned->output.push(std::string(buf));
-////    std::cout << response << std::endl;
-//    assigned->request = response;
-//    assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
-//    socket.setOn_read(std::bind(&outbound::handleread,this));
+    if (res == 0) // EOF
+    {
+        socket.setOn_read(connection::callback());
+        socket.setOn_write(connection::callback());
+        return;
+    }
+    buf[n] = '\0';
+    assigned->output.push(std::string(buf, n));
+    assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
+
 }
 void proxy_server::outbound::handlewrite()
 {
-    LOG("Successfully connected to %s", remote.to_string().c_str());
-/*    std::cout << response << std::endl;
-    socket.write_all_over_connection(response.data(), response.size());
-    socket.setOn_write(connection::callback());
-    socket.setOn_read(std::bind(&outbound::handleread, this));
-    response.clear();*/
+    if (!output.empty()) {
+        auto string = &output.front();
+        size_t written = socket.write_over_connection(string->get(), string->size());
+        string->operator+=(written);
+        if (*string)
+            output.pop();
+    }
+    if (output.empty()) {
+        socket.setOn_read(std::bind(&outbound::onRead, this));
+        socket.setOn_write(connection::callback());
+    }
 }

@@ -11,7 +11,6 @@
 #include <memory>
 #include "io_service.h"
 #include "address.h"
-#define allFlags (EPOLLIN|EPOLLOUT|EPOLLERR|EPOLLRDHUP|EPOLLHUP)
 #define errFlags (EPOLLERR|EPOLLRDHUP|EPOLLHUP)
 class connection
 {
@@ -38,6 +37,9 @@ public:
         this->fd = fd;
     }
     connection(int, io::io_service &, std::function<void()>);
+    ~connection(){
+        if(destroyed) *destroyed = true;
+    }
     ssize_t read_over_connection(void *data, size_t size);
     size_t write_over_connection(void const *data, size_t size);
     void write_all_over_connection(const char *data, size_t size);
@@ -45,6 +47,7 @@ public:
     static connection connect(io::io_service& ep, ipv4_endpoint const& remote, callback on_disconnect);
     void forceDisconnect();
 protected:
+    bool *destroyed;
     void syncIO();
     callback on_read;
     callback on_write;
