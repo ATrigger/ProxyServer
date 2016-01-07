@@ -123,4 +123,5 @@ io::io_entry::~io_entry()
     if (parent) {
         parent->removefd(fd);
     }
+    close(fd);
 }

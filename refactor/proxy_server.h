@@ -38,6 +38,7 @@ class proxy_server
     struct inbound
     {
         inbound(proxy_server *parent);
+        ~inbound();
         void handleread();
         void handlewrite();
         void sendBadRequest();

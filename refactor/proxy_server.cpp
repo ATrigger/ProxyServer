@@ -255,9 +255,13 @@ void proxy_server::outbound::onRead()
         return;
     }
     buf[n] = '\0';
-    assigned->output.push(std::string(buf, n));
-    assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
-
+    std::cout<<buf<<std::endl;
+    outstring out(std::string(buf,n));
+    out += assigned->socket.write_over_connection(out.get(), out.size());
+    if(!out) {
+        assigned->output.push(out);
+        assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
+    }
 }
 void proxy_server::outbound::handlewrite()
 {
@@ -271,5 +275,11 @@ void proxy_server::outbound::handlewrite()
     if (output.empty()) {
         socket.setOn_read(std::bind(&outbound::onRead, this));
         socket.setOn_write(connection::callback());
+    }
+}
+proxy_server::inbound::~inbound()
+{
+    if(resolverConnection.connected()){
+        resolverConnection.disconnect();
     }
 }

@@ -23,3 +23,7 @@ void outstring::operator+=(size_t t)
 {
     pp+=t;
 }
+outstring::outstring(std::string string, size_t t):text(string),pp(t)
+{
+
+}

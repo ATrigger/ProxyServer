@@ -10,6 +10,7 @@ struct outstring{
     size_t pp=0;
 
     outstring(std::string);
+    outstring(std::string,size_t);
     const char * get();
     size_t size();
     explicit operator bool();
