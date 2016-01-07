@@ -16,12 +16,12 @@ connection::connection(int _fd, io::io_service &ep, std::function<void()> end)
           bool is_destroyed = false;
           destroyed = &is_destroyed;
           try {
-              if (events & errFlags) {
-                  on_disconnect();
-                  if(is_destroyed) return;
-              }
               if (events & EPOLLIN) {
                   on_read();
+                  if(is_destroyed) return;
+              }
+              if (events & errFlags) {
+                  on_disconnect();
                   if(is_destroyed) return;
               }
               if (events & EPOLLOUT) {

@@ -199,6 +199,9 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
     remote(endpoint), socket(connection::connect(service, endpoint, [&]()
 {
     LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
+    if(socket.get_available_bytes()!=0){
+        LOG("(%d): Disconnected with available BYTES!!!",socket.getFd());
+    }
     int error = 0;
     socklen_t errlen = sizeof(error);
     if (getsockopt(this->socket.getFd(),
@@ -215,6 +218,7 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
     assigned = ass;
     output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
+
 }
 bool proxy_server::inbound::resolveFinished(resolverNode result)
 {
@@ -255,6 +259,7 @@ void proxy_server::outbound::onRead()
         return;
     }
     buf[n] = '\0';
+    LOG("(%d): response:\n",socket.getFd());
     std::cout<<buf<<std::endl;
     outstring out(std::string(buf,n));
     out += assigned->socket.write_over_connection(out.get(), out.size());
@@ -268,11 +273,16 @@ void proxy_server::outbound::handlewrite()
     if (!output.empty()) {
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
+        LOG("(%d):Written:\r\n",socket.getFd());
+        std::cout<<string->text.substr(string->pp,string->pp+written)<<std::endl;
         string->operator+=(written);
-        if (*string)
+        if (*string) {
             output.pop();
+            LOG("(%d):Written all",socket.getFd());
+        }
     }
     if (output.empty()) {
+        LOG("(%d):Now waiting for response",socket.getFd());
         socket.setOn_read(std::bind(&outbound::onRead, this));
         socket.setOn_write(connection::callback());
     }
