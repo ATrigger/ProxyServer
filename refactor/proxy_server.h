@@ -15,6 +15,7 @@
 #include "acceptor.h"
 #include "events.h"
 #include "outstring.h"
+#include "signal_fd.h"
 #include <map>
 #include <regex>
 #include <queue>
@@ -26,6 +27,8 @@
 
 class proxy_server
 {
+    constexpr static const io::timer::timer_service::clock_t::duration connectionTimeout = std::chrono::seconds(100);
+    constexpr static const io::timer::timer_service::clock_t::duration idleTimeout = std::chrono::seconds(15);
     struct inbound;
     struct outbound;
     struct resolverNode
@@ -42,6 +45,7 @@ class proxy_server
         void handleread();
         void handlewrite();
         void sendBadRequest();
+        void sendNotFound();
         bool resolveFinished(resolverNode);
         void sendDomainForResolve(std::string);
     private:
@@ -51,8 +55,9 @@ class proxy_server
         std::shared_ptr<request> requ;
         boost::signals2::connection resolverConnection;
         std::shared_ptr<outbound> assigned;
-        //std::pair<std::queue<std::string>, std::size_t> output;
+        io::timer::timer_element timer;
         std::queue<outstring> output;
+
 
     };
     struct outbound
@@ -64,6 +69,7 @@ class proxy_server
         friend struct inbound;
         ipv4_endpoint remote;
         connection socket;
+        io::timer::timer_element timer;
         inbound* assigned;
         std::shared_ptr<response> resp;
         std::queue<outstring> output;
@@ -90,6 +96,7 @@ public:
     boost::mutex resolveMutex;
     std::mutex distributeMutex;
     resolveQueue_t resolverFinished;
+    signal_fd sigfd;
     events resolveEvent;
     io::io_service *batya;
     boost::thread_group resolvers;
@@ -100,6 +107,7 @@ private:
     friend struct outbound;
 
     acceptor ss;
+    bool stop=false;
     std::map<std::string,ipv4_endpoint> dnsCache;
     std::map<inbound *, std::unique_ptr<inbound>> connections;
 };

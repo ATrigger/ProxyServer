@@ -3,6 +3,7 @@
 //
 
 #include <sys/epoll.h>
+#include <unistd.h>
 #include "signal_fd.h"
 #include "debug.h"
 int signal_fd::createfd(std::vector<signal> &vector)
@@ -55,9 +56,15 @@ void signal_fd::modifymask(std::vector<signal> &vector)
 }
 signal_fd::signal_fd(io::io_service &service,
                      signal_fd::callback callback,
-                     std::vector<signal_fd::signal> &vector)
+                     std::vector<signal_fd::signal> vector)
     : on_ready(std::move(callback)),
-      ioEntry(service,createfd(vector),EPOLLIN,on_ready)
+      ioEntry(service,createfd(vector),EPOLLIN,[this](uint32_t)
+      {
+
+          signalfd_siginfo sigfd;
+          read(fd, &sigfd, sizeof(sigfd));
+          this->on_ready(sigfd);
+      })
 {
     fd = ioEntry.getFd();
 }

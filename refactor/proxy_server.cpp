@@ -5,8 +5,14 @@
 #include "proxy_server.h"
 #include "debug.h"
 
+constexpr const io::timer::timer_service::clock_t::duration proxy_server::connectionTimeout;
+constexpr const io::timer::timer_service::clock_t::duration proxy_server::idleTimeout;
 proxy_server::inbound::inbound(proxy_server *parent)
-    : parent(parent),
+    : parent(parent), timer(parent->batya->getClock(), proxy_server::idleTimeout, [this]
+{
+    LOG("Sock(inbound) %d timed out. Disconnecting", this->socket.getFd());
+    this->socket.forceDisconnect();
+}),
       socket(parent->ss.accept(
           [this]
           {
@@ -18,6 +24,7 @@ proxy_server::inbound::inbound(proxy_server *parent)
                              SO_ERROR,
                              (void *) &error,
                              &errlen) == 0) {
+                  if(error != 0)
                   LOG("error = %s\n", strerror(error));
               }
               if (assigned) assigned->socket.forceDisconnect();
@@ -31,9 +38,9 @@ proxy_server::inbound::inbound(proxy_server *parent)
 void proxy_server::inbound::handleread()
 {
     int n = socket.get_available_bytes();
-    LOG("Bytes available: %d ", n);
+    LOG("(%d):Bytes available: %d ",socket.getFd(), n);
     if (n < 1) {
-        INFO("No bytes available, yet EPOLLIN came. Disconnected");
+        LOG("(%d):No bytes available. EOF.", socket.getFd());
         socket.forceDisconnect();
         return;
     }
@@ -47,6 +54,7 @@ void proxy_server::inbound::handleread()
         socket.forceDisconnect();
         return;
     }
+    timer.recharge(proxy_server::idleTimeout);
     if (!requ) {
         requ = std::make_shared<request>(std::string(buff));
     }
@@ -68,6 +76,11 @@ void proxy_server::inbound::sendBadRequest()
     socket.setOn_read(std::bind(&inbound::handleread, this));
     socket.setOn_write(std::bind(&inbound::handlewrite, this));
 }
+void proxy_server::inbound::sendNotFound(){
+    output.push(HTTP::notFound());
+    socket.setOn_write(std::bind(&inbound::handlewrite, this));
+    socket.setOn_read(std::bind(&inbound::handleread, this));
+}
 void proxy_server::inbound::sendDomainForResolve(std::string string)
 {
     if (parent->dnsCache.count(string) != 0) {
@@ -88,6 +101,7 @@ void proxy_server::inbound::sendDomainForResolve(std::string string)
 void proxy_server::inbound::handlewrite()
 {
     if (!output.empty()) {
+        timer.recharge(proxy_server::idleTimeout);
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         string->operator+=(written);
@@ -98,12 +112,16 @@ void proxy_server::inbound::handlewrite()
     }
     if (output.empty()) {
         socket.setOn_write(connection::callback());
-        //socket.setOn_read(std::bind(&inbound::handleread, this));
     }
 }
 
 proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint)
     : ss{ep, local_endpoint, std::bind(&proxy_server::on_new_connection, this)},
+      sigfd{ep, [this](signalfd_siginfo)
+      {
+          INFO("Catched SIGINT or SIGTERM");
+          this->stop = true;
+      }, {SIGINT, SIGTERM}},
       resolveEvent(ep, [this](uint32_t)
       {
           std::unique_lock<std::mutex> distribution(distributeMutex, std::try_to_lock_t());
@@ -117,6 +135,13 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
       })
 {
     batya = &ep;
+    ep.setCallback([this]()
+                   {
+                       return (stop && this->connections.size() == 0)
+                              ? (1)
+                              : (0);
+
+                   });
     for (int i = 0; i < 5; i++) {
         resolvers.create_thread(
             [this]()
@@ -190,13 +215,24 @@ ipv4_endpoint proxy_server::local_endpoint() const
 
 void proxy_server::on_new_connection()
 {
+    if (this->stop) {
+        INFO("New connection after signal received. Proceeding disconnection.");
+        auto tempsocket = ss.accept([]()
+                                    { });
+        tempsocket.forceDisconnect();
+        return;
+    }
     std::unique_ptr<inbound> cc(new inbound(this));
     inbound *pcc = cc.get();
     connections.emplace(pcc, std::move(cc));
 }
 proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
     :
-    remote(endpoint), socket(connection::connect(service, endpoint, [&]()
+    remote(endpoint),timer(service.getClock(),proxy_server::connectionTimeout,[this](){
+        LOG("(%d): Connection timeout.",socket.getFd());
+        assigned->sendNotFound();
+        socket.forceDisconnect();
+    }), socket(connection::connect(service, endpoint, [&]()
 {
     LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
     if (socket.get_available_bytes() != 0) {
@@ -228,9 +264,7 @@ bool proxy_server::inbound::resolveFinished(resolverNode result)
     if (result.host != requ->get_host()) return false;
     this->resolverConnection.disconnect();
     if (!result.ok) {
-        output.push(HTTP::notFound());
-        socket.setOn_write(std::bind(&inbound::handlewrite, this));
-        socket.setOn_read(std::bind(&inbound::handleread, this));
+        sendNotFound();
     }
     else {
         parent->dnsCache[result.host] = result.resolvedHost;
@@ -274,6 +308,7 @@ void proxy_server::outbound::onRead()
 void proxy_server::outbound::handlewrite()
 {
     if (!output.empty()) {
+        timer.turnOff();
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         LOG("(%d):Written:\r\n", socket.getFd());

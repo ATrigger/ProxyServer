@@ -13,15 +13,15 @@
 
 class signal_fd
 {
-    typedef std::function<void (uint64_t)> callback;
+    typedef std::function<void (signalfd_siginfo)> callback;
     typedef uint8_t signal;
 public:
-    signal_fd(io::io_service&,callback,std::vector<signal>&);
+    signal_fd(io::io_service&,callback,std::vector<signal>);
     void modifymask(std::vector<signal>&);
 private:
     int createfd(std::vector<signal> &vector);
-    io::io_entry ioEntry;
     callback on_ready;
+    io::io_entry ioEntry;
     int fd;
     int createfd();
 };

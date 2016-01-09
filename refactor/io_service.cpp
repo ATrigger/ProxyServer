@@ -24,7 +24,7 @@ int io::io_service::default_timeout()
 {
     static int i = 0;
     i++;
-    if(i%10==0)LOG("Uptime: %d * %lu MS",i,timeoutMS);
+    if(i%10==0)LOG("Timeouted: %d times.",i);
 
 }
 
@@ -40,7 +40,7 @@ void io::io_service::control(int fd, int operation, uint32_t flags, io_entry *to
 
 int io::io_service::run()
 {
-    while (!loop());
+    while (loop()==0);
     return 0;
 }
 
@@ -48,6 +48,8 @@ int io::io_service::loop()
 {
     epoll_event events[MAX_EVENTS];
     int count;
+    int nearest_timer = calculate_timeout();
+    timeoutMS = (nearest_timer<0)?(1000):(nearest_timer);
     do {
         count = epoll_wait(epoll, events, MAX_EVENTS, timeoutMS);
     }
@@ -57,7 +59,8 @@ int io::io_service::loop()
     }
     if (count == 0) {
         if (timeout) {
-            if (!timeout()) return 1;
+            if (timeout() !=0)
+                return 1;
         }
         else {
             default_timeout();
@@ -81,8 +84,6 @@ int io::io_service::loop()
 
 void io::io_service::removefd(int i)
 {
-    //MAN epoll Q6;
-    //close(i);
     int res = epoll_ctl(epoll, EPOLL_CTL_DEL, i, nullptr);
     if (res < 0)throw_error(errno, "EPOLL_DEL");
 }
@@ -124,4 +125,22 @@ io::io_entry::~io_entry()
         parent->removefd(fd);
     }
     close(fd);
+}
+void io::io_service::setCallback(std::function<int()> function)
+{
+    timeout = std::move(function);
+}
+int io::io_service::calculate_timeout()
+{
+    if(clock.empty()) return -1;
+
+    timer::timer_service::clock_t::time_point now = timer::timer_service::clock_t::now();
+    clock.process(now);
+    if(clock.empty()) return -1;
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(clock.top()-now).count();
+}
+io::timer::timer_service &io::io_service::getClock()
+{
+    return clock;
 }
