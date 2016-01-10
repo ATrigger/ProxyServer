@@ -6,7 +6,9 @@
 #include "debug.h"
 
 constexpr const io::timer::timer_service::clock_t::duration proxy_server::connectionTimeout;
+
 constexpr const io::timer::timer_service::clock_t::duration proxy_server::idleTimeout;
+
 proxy_server::inbound::inbound(proxy_server *parent)
     : parent(parent), timer(parent->batya->getClock(), proxy_server::idleTimeout, [this]
 {
@@ -24,10 +26,12 @@ proxy_server::inbound::inbound(proxy_server *parent)
                              SO_ERROR,
                              (void *) &error,
                              &errlen) == 0) {
-                  if(error != 0)
-                  LOG("error = %s\n", strerror(error));
+                  if (error != 0)
+                      LOG("error = %s\n", strerror(error));
               }
-              if (assigned) assigned->socket.forceDisconnect();
+              if (assigned){
+                  INFO("Disconnecting assigned socket");
+                  assigned->socket.forceDisconnect();}
               this->parent->connections.erase(this);
           }))
 {
@@ -38,7 +42,7 @@ proxy_server::inbound::inbound(proxy_server *parent)
 void proxy_server::inbound::handleread()
 {
     int n = socket.get_available_bytes();
-    LOG("(%d):Bytes available: %d ",socket.getFd(), n);
+    LOG("(%d):Bytes available: %d ", socket.getFd(), n);
     if (n < 1) {
         LOG("(%d):No bytes available. EOF.", socket.getFd());
         socket.forceDisconnect();
@@ -65,8 +69,12 @@ void proxy_server::inbound::handleread()
         sendBadRequest();
     }
     if (requ->get_state() == request::BODYFULL) {
-        std::cout << requ->get_request_text() << std::endl;
-        sendDomainForResolve(requ->get_host());
+        //std::cout << requ->get_request_text() << std::endl;
+        parent->getResolver().sendDomainForResolve(requ->get_host());
+        this->resolverConnection =
+            parent->distribution.connect(
+                [this](resolver::resolverNode in)
+                { return this->onResolve(in); });
         //socket.setOn_read(connection::callback());
     }
 }
@@ -76,26 +84,11 @@ void proxy_server::inbound::sendBadRequest()
     socket.setOn_read(std::bind(&inbound::handleread, this));
     socket.setOn_write(std::bind(&inbound::handlewrite, this));
 }
-void proxy_server::inbound::sendNotFound(){
+void proxy_server::inbound::sendNotFound()
+{
     output.push(HTTP::notFound());
     socket.setOn_write(std::bind(&inbound::handlewrite, this));
     socket.setOn_read(std::bind(&inbound::handleread, this));
-}
-void proxy_server::inbound::sendDomainForResolve(std::string string)
-{
-    if (parent->dnsCache.count(string) != 0) {
-        parent->resolverFinished.push({string, parent->dnsCache[string], true});
-        parent->resolveEvent.add();
-    }
-    else {
-        parent->domains.push(new std::string(string));
-        parent->newTask.notify_one();
-    }
-    this->resolverConnection =
-        parent->resolver.connect(
-            [this](resolverNode in)
-            { return this->resolveFinished(in); });
-    return;
 }
 
 void proxy_server::inbound::handlewrite()
@@ -122,90 +115,25 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
           INFO("Catched SIGINT or SIGTERM");
           this->stop = true;
       }, {SIGINT, SIGTERM}},
-      resolveEvent(ep, [this](uint32_t)
+      resolveEvent(ep,true, [this](uint32_t)
       {
-          std::unique_lock<std::mutex> distribution(distributeMutex, std::try_to_lock_t());
-          resolveQueue_t copy;
-          std::swap(copy, resolverFinished);
-          distribution.unlock();
-          while (!copy.empty()) {
-              resolver(copy.front());
-              copy.pop();
-          }
+          std::unique_lock<std::mutex> distributionLock(domainResolver.getDistributeMutex());
+          auto target = domainResolver.getFirst();
+          distributionLock.unlock();
+          distribution(target);
       })
+    ,domainResolver(resolveEvent,5)
 {
     batya = &ep;
     ep.setCallback([this]()
                    {
+                       static int counter =0;
+                       counter ++;
+                       if(counter %10==0) LOG("Now connected: %lu",this->connections.size());
                        return (stop && this->connections.size() == 0)
-                              ? (1)
-                              : (0);
-
+                              ? (1) // we can now exit
+                              : (0); // clients in progress.
                    });
-    for (int i = 0; i < 5; i++) {
-        resolvers.create_thread(
-            [this]()
-            {
-                while (true) {
-
-                    boost::unique_lock<boost::mutex> lk(resolveMutex);
-
-                    newTask.wait(lk, [this]()
-                    { return !this->domains.empty() || this->destroyThreads; });
-                    if (destroyThreads) return;
-                    std::string *domain;
-                    std::string port, name, input;
-                    this->domains.pop(domain);
-                    input = *domain;
-                    name = input;
-                    port = "80";
-                    delete domain;
-                    auto it = input.find(':');
-                    if (it != input.npos) {
-                        port = input.substr(it + 1);
-                        name = input.substr(0, it);
-                    }
-                    struct addrinfo *r, hints;
-                    bzero(&hints, sizeof(hints));
-                    hints.ai_family = AF_INET;
-                    hints.ai_socktype = SOCK_STREAM;
-                    std::unique_lock<std::mutex> distribution(distributeMutex, std::defer_lock_t());
-                    int res = getaddrinfo(name.data(), port.data(), &hints, &r);
-                    if (res != 0) {
-
-                        LOG("Resolve failed:%s(%s:%s)(%s). Signal proceed.",
-                            input.data(), name.data(), port.data(),
-                            gai_strerror(res));
-                        distribution.lock();
-                        resolverFinished.push({input, {}, false});
-                        resolveEvent.add(1);
-                        continue;
-                    }
-                    char buffer[INET6_ADDRSTRLEN];
-                    res = getnameinfo(r->ai_addr,
-                                      r->ai_addrlen,
-                                      buffer,
-                                      sizeof(buffer),
-                                      0,
-                                      0,
-                                      NI_NUMERICHOST);
-                    freeaddrinfo(r);
-                    if (res != 0) {
-                        LOG("Cannot transform to IP: %d Signal proceed", res);
-                        distribution.lock();
-                        resolverFinished.push({input, {}, false});
-                        resolveEvent.add(1);
-                        continue;
-                    }
-                    LOG("Looks like i got IP: %s for %s", buffer, input.c_str());
-
-                    distribution.lock();
-                    resolverFinished.push({input, {atoi(port.c_str()), ipv4_address(std::string(buffer))},
-                                           true}/*make_pair(input, ipv4_address(std::string(buffer)))*/);
-                    resolveEvent.add(1);
-                }
-            });
-    }
 }
 
 ipv4_endpoint proxy_server::local_endpoint() const
@@ -228,11 +156,12 @@ void proxy_server::on_new_connection()
 }
 proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
     :
-    remote(endpoint),timer(service.getClock(),proxy_server::connectionTimeout,[this](){
-        LOG("(%d): Connection timeout.",socket.getFd());
-        assigned->sendNotFound();
-        socket.forceDisconnect();
-    }), socket(connection::connect(service, endpoint, [&]()
+    remote(endpoint), timer(service.getClock(), proxy_server::connectionTimeout, [this]()
+{
+    LOG("(%d): Connection timeout.", socket.getFd());
+    assigned->sendNotFound();
+    socket.forceDisconnect();
+}), socket(connection::connect(service, endpoint, [&]()
 {
     LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
     if (socket.get_available_bytes() != 0) {
@@ -259,7 +188,7 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
 
 }
-bool proxy_server::inbound::resolveFinished(resolverNode result)
+bool proxy_server::inbound::onResolve(resolver::resolverNode result)
 {
     if (result.host != requ->get_host()) return false;
     this->resolverConnection.disconnect();
@@ -267,7 +196,7 @@ bool proxy_server::inbound::resolveFinished(resolverNode result)
         sendNotFound();
     }
     else {
-        parent->dnsCache[result.host] = result.resolvedHost;
+        parent->cacheDomain(result.host, result.resolvedHost);
         assigned = std::make_shared<outbound>(*parent->batya, result.resolvedHost, this);
         requ.reset();
     }
@@ -275,9 +204,6 @@ bool proxy_server::inbound::resolveFinished(resolverNode result)
 }
 proxy_server::~proxy_server()
 {
-    destroyThreads = true;
-    newTask.notify_all();
-    resolvers.join_all();
 }
 void proxy_server::outbound::onRead()
 {
@@ -287,7 +213,7 @@ void proxy_server::outbound::onRead()
     ssize_t res = socket.read_over_connection(buf, n);
     if (res == -1) {
         throw_error(errno, "onRead()");
-        return;
+
     }
     if (res == 0) // EOF
     {
@@ -296,8 +222,8 @@ void proxy_server::outbound::onRead()
         return;
     }
     buf[n] = '\0';
-    LOG("(%d): response:\n", socket.getFd());
-    std::cout << buf << std::endl;
+    LOG("(%d): response:", socket.getFd());
+    //std::cout << buf << std::endl;
     outstring out(std::string(buf, n));
     out += assigned->socket.write_over_connection(out.get(), out.size());
     if (!out) {
@@ -312,7 +238,7 @@ void proxy_server::outbound::handlewrite()
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         LOG("(%d):Written:\r\n", socket.getFd());
-        std::cout << string->text.substr(string->pp, string->pp + written) << std::endl;
+        //std::cout << string->text.substr(string->pp, string->pp + written) << std::endl;
         string->operator+=(written);
         if (*string) {
             output.pop();
@@ -330,4 +256,16 @@ proxy_server::inbound::~inbound()
     if (resolverConnection.connected()) {
         resolverConnection.disconnect();
     }
+}
+events &proxy_server::getResolveEvent()
+{
+    return resolveEvent;
+}
+resolver &proxy_server::getResolver()
+{
+    return domainResolver;
+}
+void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
+{
+    domainResolver.cacheDomain(string, endpoint);
 }

@@ -7,7 +7,18 @@
 #include "events.h"
 events::events(io::io_service &service, events::callback _callback)
     : on_ready(std::move(_callback)),
-      ioEntry(service, createfd(), EPOLLIN, [this](uint32_t)
+      ioEntry(service, createfd(true), EPOLLIN, [this](uint32_t)
+      {
+          uint64_t res;
+          read(fd, &res, sizeof(res));
+          this->on_ready(res);
+      })
+{
+    fd=ioEntry.getFd();
+}
+events::events(io::io_service &service,bool semaphore, events::callback _callback)
+    : on_ready(std::move(_callback)),
+      ioEntry(service, createfd(semaphore), EPOLLIN, [this](uint32_t)
       {
           uint64_t res;
           read(fd, &res, sizeof(res));
@@ -24,9 +35,9 @@ void events::setCallback(events::callback callback)
 {
     on_ready = std::move(callback);
 }
-int events::createfd()
+int events::createfd(bool semaphore)
 {
-    int res = eventfd(0, EFD_NONBLOCK);
+    int res = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC |(semaphore)?(EFD_SEMAPHORE):(0));
     if (res == -1) {
         throw_error(errno, "eventfd()");
     }

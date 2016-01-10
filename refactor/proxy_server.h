@@ -16,14 +16,12 @@
 #include "events.h"
 #include "outstring.h"
 #include "signal_fd.h"
+#include "resolver.h"
 #include <map>
 #include <regex>
 #include <queue>
-#include <boost/signals2.hpp>
-#include <boost/lockfree/queue.hpp>
-#include <boost/thread.hpp>
-#include <boost/thread/condition_variable.hpp>
 #include <mutex>
+#include <boost/signals2/connection.hpp>
 
 class proxy_server
 {
@@ -31,12 +29,16 @@ class proxy_server
     constexpr static const io::timer::timer_service::clock_t::duration idleTimeout = std::chrono::seconds(15);
     struct inbound;
     struct outbound;
-    struct resolverNode
+    struct FirstFound
     {
-        resolverNode(std::string _host, ipv4_endpoint to, bool flag): host(_host), resolvedHost(to), ok(flag){}
-        std::string host;
-        ipv4_endpoint resolvedHost;
-        bool ok;
+        typedef bool result_type;
+        template <typename InputIterator> result_type operator()(InputIterator aFirstObserver, InputIterator aLastObserver) const {
+            result_type val = false;
+            for (; aFirstObserver != aLastObserver && !val; ++aFirstObserver)  {
+                val = *aFirstObserver;
+            }
+            return val;
+        }
     };
     struct inbound
     {
@@ -46,8 +48,8 @@ class proxy_server
         void handlewrite();
         void sendBadRequest();
         void sendNotFound();
-        bool resolveFinished(resolverNode);
-        void sendDomainForResolve(std::string);
+        bool onResolve(resolver::resolverNode);
+
     private:
         friend struct outbound;
         proxy_server *parent;
@@ -78,39 +80,21 @@ public:
     proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint);
     ~proxy_server();
     ipv4_endpoint local_endpoint() const;
-    typedef std::queue<resolverNode> resolveQueue_t;
-    struct FirstFound
-    {
-        typedef bool result_type;
-        template <typename InputIterator> result_type operator()(InputIterator aFirstObserver, InputIterator aLastObserver) const {
-            result_type val = false;
-            for (; aFirstObserver != aLastObserver && !val; ++aFirstObserver)  {
-                val = *aFirstObserver;
-            }
-            return val;
-        }
-    };
-    boost::signals2::signal<bool (resolverNode), FirstFound> resolver;
-    boost::lockfree::queue<std::string*,boost::lockfree::capacity<30>> domains;
-    boost::condition_variable newTask;
-    boost::mutex resolveMutex;
-    std::mutex distributeMutex;
-    resolveQueue_t resolverFinished;
+    events& getResolveEvent();
+    resolver & getResolver();
+    void cacheDomain(std::string &,ipv4_endpoint&);
     events resolveEvent;
     signal_fd sigfd;
-
     io::io_service *batya;
-    boost::thread_group resolvers;
-    bool destroyThreads = false;
 private:
     void on_new_connection();
     friend struct inbound;
     friend struct outbound;
-
     acceptor ss;
+    resolver domainResolver;
     bool stop=false;
-    std::map<std::string,ipv4_endpoint> dnsCache;
     std::map<inbound *, std::unique_ptr<inbound>> connections;
+    boost::signals2::signal<bool (resolver::resolverNode), FirstFound> distribution;
 };
 
 

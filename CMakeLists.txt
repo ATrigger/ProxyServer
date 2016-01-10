@@ -36,7 +36,14 @@ set(NEW_SOURCE
         refactor/outstring.cpp
         refactor/outstring.h
         refactor/epoll_error.h
-        refactor/posix_sockets.cpp refactor/posix_sockets.h refactor/connection.h refactor/connection.cpp refactor/proxy_server.cpp refactor/proxy_server.h refactor/main_proxy.cpp refactor/events.cpp refactor/events.h refactor/HTTP.cpp refactor/signal_fd.cpp refactor/signal_fd.h refactor/lrucache.h refactor/Resolver.cpp refactor/Resolver.h)
+        refactor/posix_sockets.cpp refactor/posix_sockets.h
+        refactor/connection.h refactor/connection.cpp
+        refactor/proxy_server.cpp refactor/proxy_server.h
+        refactor/main_proxy.cpp
+        refactor/events.cpp refactor/events.h
+        refactor/HTTP.cpp
+        refactor/signal_fd.cpp refactor/signal_fd.h
+        refactor/lrucache.h refactor/resolver.cpp refactor/resolver.h refactor/utils.h refactor/utils.cpp)
 add_executable(NEW ${NEW_SOURCE})
 add_executable(ECHO ${ECHO_SOURCE})
 target_link_libraries(NEW ${Boost_LIBRARIES})
