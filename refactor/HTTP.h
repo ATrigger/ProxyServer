@@ -120,7 +120,7 @@ struct request: public HTTP
     std::string get_host();
     std::string get_request_text();
 
-
+    bool is_validating() const;
 private:
     void parse_first_line() override;
 
@@ -136,8 +136,9 @@ struct response: public HTTP
         : HTTP(text)
     { update_state(); };
 
-    std::string get_code() const
-    { return code; }
+    bool is_cacheable() const;
+    std::string get_code() const { return code; }
+    request get_validating_request(std::string URI, std::string host) const;
 
 private:
     void parse_first_line() override;

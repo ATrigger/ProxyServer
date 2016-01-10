@@ -163,3 +163,24 @@ void response::parse_first_line()
         return;
     }
 }
+bool request::is_validating() const
+{
+    return  get_header("If-Match") != ""
+        || get_header("If-Modified-Since") != ""
+        || get_header("If-None-Match") != ""
+        || get_header("If-Range") != ""
+        || get_header("If-Unmodified-Since") != "";
+}
+
+bool response::is_cacheable() const
+{
+    return state == BODYFULL
+        && get_header("ETag") != ""
+        && get_header("Vary") == ""
+        && get_code() == "200";
+}
+
+request response::get_validating_request(std::string URI, std::string host) const
+{
+    return request{"GET " + URI + " HTTP/1.1\r\nIf-None-Match: " + get_header("ETag") + "\r\nHost: " + host + "\r\n\r\n"};
+}

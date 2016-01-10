@@ -126,7 +126,7 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
           distributionLock.unlock();
           distribution(target);
       })
-    ,domainResolver(resolveEvent,5)
+    ,domainResolver(resolveEvent,5),proxycache(10000)
 {
     batya = &ep;
     ep.setCallback([this]()
@@ -160,7 +160,7 @@ void proxy_server::on_new_connection()
 }
 proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
     :
-    remote(endpoint), timer(service.getClock(), proxy_server::connectionTimeout, [this]()
+    remote(endpoint),assigned(ass),parent(ass->parent), timer(service.getClock(), proxy_server::connectionTimeout, [this]()
 {
     LOG("(%d): Connection timeout.", socket.getFd());
     assigned->sendNotFound();
@@ -187,8 +187,15 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
     assigned->assigned.reset();
 }))
 {
-    assigned = ass;
-    output.push(ass->requ->get_request_text());
+    host = ass->requ->get_host();
+    URI = ass->requ->get_URI();
+    if(!ass->requ->is_validating()
+        && parent->proxycache.exists(host + URI)){
+        auto cache_entry = parent->proxycache.get(host + URI);
+        LOG("Cache hit: %s",URI.c_str());
+        output.push(cache_entry.get_validating_request(URI,host).get_request_text());
+    }
+    else output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
 
 }
@@ -217,23 +224,59 @@ void proxy_server::outbound::onRead()
     ssize_t res = socket.read_over_connection(buf, n);
     if (res == -1) {
         throw_error(errno, "onRead()");
-
     }
     if (res == 0) // EOF
     {
+        try_to_cache();
         socket.setOn_read(connection::callback());
         socket.setOn_write(connection::callback());
         return;
     }
     buf[n] = '\0';
     LOG("(%d): response:", socket.getFd());
+    if(resp == nullptr){
+        resp = std::make_shared<response>(std::string(buf));
+    }
+    else {
+        resp->add_part({buf});
+    }
+    if(resp->get_state()>=HTTP::FIRSTLINE){
+        if(resp->get_code()!="200" && parent->proxycache.exists(host + URI)){
+            LOG("CACHE HIT (%d):(%s)",socket.getFd(),resp->get_code().c_str());
+            auto cache_entry = parent->proxycache.get(host + URI);
+            outstring out(std::string(cache_entry.get_text()));
+            out += assigned->socket.write_over_connection(out.get(), out.size());
+            if (!out) {
+                assigned->output.push(out);
+                assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
+            }
+            socket.setOn_read([this](){
+                int n = socket.get_available_bytes();
+                LOG("Bytes discarded: %d ", n);
+                char buf[n + 1];
+                ssize_t res = socket.read_over_connection(buf, n);
+                if (res == -1) {
+                    throw_error(errno, "NestedRead()");
+                }
+            });
+        }
+        else {
+            LOG("MODIFIED (%d):(%s)",socket.getFd(),resp->get_code().c_str());
+            outstring out(std::string(buf, n));
+            out += assigned->socket.write_over_connection(out.get(), out.size());
+            if (!out) {
+                assigned->output.push(out);
+                assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
+            }
+        }
+    }
     //std::cout << buf << std::endl;
-    outstring out(std::string(buf, n));
+    /*outstring out(std::string(buf, n));
     out += assigned->socket.write_over_connection(out.get(), out.size());
     if (!out) {
         assigned->output.push(out);
         assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
-    }
+    }*/
 }
 void proxy_server::outbound::handlewrite()
 {
@@ -274,3 +317,11 @@ void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
     domainResolver.cacheDomain(string, endpoint);
 }
 
+void proxy_server::outbound::try_to_cache()
+{
+    if(resp != nullptr && resp->is_cacheable()){
+        std::string temp=host+URI;
+        LOG("Cached: %s (%s)",temp.c_str(),resp->get_header("ETag").c_str());
+        parent->proxycache.put(host + URI,*resp);
+    }
+}

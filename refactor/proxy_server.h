@@ -59,8 +59,6 @@ class proxy_server
         std::shared_ptr<outbound> assigned;
         io::timer::timer_element timer;
         std::queue<outstring> output;
-
-
     };
     struct outbound
     {
@@ -68,13 +66,17 @@ class proxy_server
         void handlewrite();
         void onRead();
     private:
+        void try_to_cache();
         friend struct inbound;
         ipv4_endpoint remote;
         connection socket;
         io::timer::timer_element timer;
         inbound* assigned;
         std::shared_ptr<response> resp;
+        std::string host;
+        std::string URI;
         std::queue<outstring> output;
+        proxy_server *parent;
     };
 public:
     proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint);
@@ -95,6 +97,7 @@ private:
     resolver domainResolver;
     bool stop=false;
     std::map<inbound *, std::unique_ptr<inbound>> connections;
+    cache::lru_cache<std::string,response> proxycache;
     boost::signals2::signal<bool (resolver::resolverNode), FirstFound> distribution;
 };
 
