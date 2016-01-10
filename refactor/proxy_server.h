@@ -78,6 +78,7 @@ class proxy_server
     };
 public:
     proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint);
+    proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint,size_t);
     ~proxy_server();
     ipv4_endpoint local_endpoint() const;
     events& getResolveEvent();

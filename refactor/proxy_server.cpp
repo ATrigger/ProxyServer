@@ -107,7 +107,11 @@ void proxy_server::inbound::handlewrite()
         socket.setOn_write(connection::callback());
     }
 }
-
+proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint, size_t t):
+    proxy_server(ep,local_endpoint)
+{
+    domainResolver.resize(t);
+}
 proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint)
     : ss{ep, local_endpoint, std::bind(&proxy_server::on_new_connection, this)},
       sigfd{ep, [this](signalfd_siginfo)
@@ -269,3 +273,4 @@ void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
 {
     domainResolver.cacheDomain(string, endpoint);
 }
+

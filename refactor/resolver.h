@@ -32,6 +32,7 @@ public:
     std::mutex & getDistributeMutex();
     void sendDomainForResolve(std::string);
     void cacheDomain(std::string&,ipv4_endpoint&);
+    void resize(size_t);
     ~resolver();
 private:
     void worker();

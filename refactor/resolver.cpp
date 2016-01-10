@@ -114,3 +114,11 @@ resolver::resolverNode resolver::getFirst()
     resolverFinished.pop();
     return result;
 }
+void resolver::resize(size_t t)
+{
+    destroyThreads=true;
+    newTask.notify_all();
+    resolvers.join_all();
+    destroyThreads=false;
+    for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
+}
