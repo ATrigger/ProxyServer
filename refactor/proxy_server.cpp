@@ -98,6 +98,7 @@ void proxy_server::inbound::handlewrite()
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         string->operator+=(written);
+        LOG("(%d):Written %lu bytes to client",socket.getFd(),written);
         if (*string) {
             output.pop();
             INFO("Written all");
@@ -269,6 +270,7 @@ void proxy_server::outbound::onRead()
                 assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
             }
         }
+        assigned->timer.recharge(proxy_server::idleTimeout);
     }
     //std::cout << buf << std::endl;
     /*outstring out(std::string(buf, n));
