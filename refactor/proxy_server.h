@@ -96,8 +96,9 @@ public:
     boost::mutex resolveMutex;
     std::mutex distributeMutex;
     resolveQueue_t resolverFinished;
-    signal_fd sigfd;
     events resolveEvent;
+    signal_fd sigfd;
+
     io::io_service *batya;
     boost::thread_group resolvers;
     bool destroyThreads = false;
