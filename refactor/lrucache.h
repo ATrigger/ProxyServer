@@ -19,7 +19,13 @@ public:
 
     lru_cache(size_t max_size)
         :_max_size(max_size){}
-
+    void remove(const key_t &key){
+        auto it = _cache_items_map.find(key);
+        if (it != _cache_items_map.end()) {
+            _cache_items_list.erase(it->second);
+            _cache_items_map.erase(it);
+        }
+    }
     void put(const key_t &key, const value_t &value)
     {
         auto it = _cache_items_map.find(key);

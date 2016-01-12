@@ -3,6 +3,7 @@
 //
 
 #include "HTTP.h"
+#include "debug.h"
 void HTTP::add_part(std::string string)
 {
     text.append(string);
@@ -29,15 +30,17 @@ void HTTP::update_state()
 
 void HTTP::parse_headers()
 {
-    auto headers_start = std::find_if(text.begin(), text.end(), [](char a) {
+    auto headers_start = std::find_if(text.begin(), text.end(), [](char a)
+    {
         return a == '\n';
     })++;
     auto headers_end = headers_start + 1;
 
-    while (headers_end != text.end() && *headers_end != '\r')
-    {
-        auto space = std::find_if(headers_end, text.end(), [](char a) { return a == ':'; });
-        auto crlf = std::find_if(space + 1, text.end(), [](char a){ return a == '\r'; });
+    while (headers_end != text.end() && *headers_end != '\r') {
+        auto space = std::find_if(headers_end, text.end(), [](char a)
+        { return a == ':'; });
+        auto crlf = std::find_if(space + 1, text.end(), [](char a)
+        { return a == '\r'; });
 
         headers.insert({{headers_end, space}, {space + 2, crlf}});
         headers_end = crlf + 2;
@@ -58,26 +61,26 @@ void HTTP::check_body()
 
     body = text.substr(body_start);
 
-    if (get_header("Content-Length") != "")
-    {
+    if (get_header("Content-Length") != "") {
         if (body.size() == static_cast<size_t>(std::stoi(get_header("Content-Length")))) {
             state = BODYFULL;
-        } else {
+        }
+        else {
             state = BODYPART;
         }
     }
-    else if (get_header("Transfer-Encoding") == "chunked")
-    {
+    else if (get_header("Transfer-Encoding") == "chunked") {
         if (std::string(body.end() - 7, body.end()) == "\r\n0\r\n\r\n") {
             state = BODYFULL;
-        } else {
+        }
+        else {
             state = BODYPART;
         }
     }
-    else if (body.size() == 0)
-    {
+    else if (body.size() == 0) {
         state = BODYFULL;
-    } else {
+    }
+    else {
         state = FAIL;
     }
 }
@@ -104,9 +107,12 @@ std::string request::get_host()
 
 void request::parse_first_line()
 {
-    auto first_space = std::find_if(text.begin(), text.end(), [](char a) { return a == ' '; });
-    auto second_space = std::find_if(first_space + 1, text.end(), [](char a) { return a == ' '; });
-    auto crlf = std::find_if(second_space + 1, text.end(), [](char a) { return a == '\r'; });
+    auto first_space = std::find_if(text.begin(), text.end(), [](char a)
+    { return a == ' '; });
+    auto second_space = std::find_if(first_space + 1, text.end(), [](char a)
+    { return a == ' '; });
+    auto crlf = std::find_if(second_space + 1, text.end(), [](char a)
+    { return a == '\r'; });
 
     if (first_space == text.end() || second_space == text.end() || crlf == text.end()) {
         state = FAIL;
@@ -146,9 +152,12 @@ std::string request::get_request_text()
 
 void response::parse_first_line()
 {
-    auto first_space = std::find_if(text.begin(), text.end(), [](char a) { return a == ' '; });
-    auto second_space = std::find_if(first_space + 1, text.end(), [](char a) { return a == ' '; });
-    auto crlf = std::find_if(second_space + 1, text.end(), [](char a) { return a == '\r'; });
+    auto first_space = std::find_if(text.begin(), text.end(), [](char a)
+    { return a == ' '; });
+    auto second_space = std::find_if(first_space + 1, text.end(), [](char a)
+    { return a == ' '; });
+    auto crlf = std::find_if(second_space + 1, text.end(), [](char a)
+    { return a == '\r'; });
 
     if (first_space == text.end() || second_space == text.end() || crlf == text.end()) {
         state = FAIL;
@@ -165,7 +174,7 @@ void response::parse_first_line()
 }
 bool request::is_validating() const
 {
-    return  get_header("If-Match") != ""
+    return get_header("If-Match") != ""
         || get_header("If-Modified-Since") != ""
         || get_header("If-None-Match") != ""
         || get_header("If-Range") != ""
@@ -182,12 +191,21 @@ bool response::is_cacheable() const
 
 request response::get_validating_request(std::string URI, std::string host) const
 {
-    return request{"GET " + URI + " HTTP/1.1\r\nIf-None-Match: " + get_header("ETag") + "\r\nHost: " + host + "\r\n\r\n"};
+    request temp("GET ");
+    temp.add_part(URI);
+    temp.add_part(" HTTP/1.1\r\nIf-None-Match: ");
+    temp.add_part(get_header("ETag"));
+    temp.add_part("\r\nHost: ");
+    temp.add_part(host);
+    temp.add_part("\r\n\r\n");
+    LOG("Request: %s",temp.get_text().c_str());
+    LOG("Request-text: %s",temp.get_request_text().c_str());
+    return temp;
 }
 bool response::checkCacheControl() const
 {
     auto target = get_header("Cache-Control");
     return target == "" || (
-        target.find("private")==target.npos &&
-        target.find("no-store")==target.npos); // true = cacheable, false = non-cacheable
+        target.find("private") == target.npos && target.find("no-cache") == target.npos &&
+            target.find("no-store") == target.npos); // true = cacheable, false = non-cacheable
 }

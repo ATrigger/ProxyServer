@@ -205,6 +205,9 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
         auto cache_entry = parent->proxycache.get(host + URI);
         LOG("Cache hit: %s", URI.c_str());
         output.push(cache_entry.get_validating_request(URI, host).get_request_text());
+        INFO("Validating request");
+        std::cerr<<cache_entry.get_validating_request(URI, host).get_request_text()<<std::endl;
+        std::cerr<<cache_entry.get_validating_request(URI, host).get_text()<<std::endl;
     }
     else output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
@@ -242,7 +245,14 @@ void proxy_server::outbound::onRead()
         socket.setOn_read(std::bind(&outbound::onReadDiscard, this));
     }
     else {
-        if (cacheHit) LOG("Couldn't use cache (%d):(%s)", socket.getFd(), resp->get_code().c_str());
+        if (cacheHit) {
+            LOG("Couldn't use cache (%d):(%s)", socket.getFd(), resp->get_code().c_str());
+            if (resp->get_code() == "403") // validation is forbidden
+            {
+                parent->proxycache.remove(host + URI);
+            }
+            cacheHit = false;
+        }
         outstring out(std::string(buf, n));
         assigned->trySend(out);
     }
@@ -250,7 +260,7 @@ void proxy_server::outbound::onRead()
 void proxy_server::outbound::handlewrite()
 {
     if (!output.empty()) {
-        timer.turnOff(); // Connection successfull. No need to check connection_timeout
+        timer.turnOff(); // Connection successful. No need to check connection_timeout
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         LOG("(%d):Written:\r\n", socket.getFd());
