@@ -234,7 +234,7 @@ void proxy_server::outbound::onRead()
         resp->add_part({buf,n});
     }
     socket.setOn_read(connection::callback());
-    if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() != "200" && cacheHit) {
+    if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() == "304" && cacheHit) {//NOT MODIFIED 304
         LOG("Cache valid (%d):(%s)", socket.getFd(), resp->get_code().c_str());
         auto cache_entry = parent->proxycache.get(host + URI);
         outstring out(std::string(cache_entry.get_text()));
