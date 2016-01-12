@@ -10,7 +10,7 @@
 void resolver::sendDomainForResolve(std::string string)
 {
     if (dnsCache.exists(string)) {
-        LOG("Cache hit: %s(%s)",string.c_str(),dnsCache.get(string).to_string().c_str());
+        LOG("DNS hit: %s(%s)",string.c_str(),dnsCache.get(string).to_string().c_str());
         resolverFinished.push({string, dnsCache.get(string), true});
         finisher->add();
     }
@@ -121,4 +121,8 @@ void resolver::resize(size_t t)
     resolvers.join_all();
     destroyThreads=false;
     for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
+}
+size_t resolver::cacheSize() const
+{
+    return dnsCache.size();
 }

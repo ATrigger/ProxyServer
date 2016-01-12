@@ -2,7 +2,10 @@
 // Created by kamenev on 10.01.16.
 //
 
+#include <sys/socket.h>
+#include <string.h>
 #include "utils.h"
+#include "debug.h"
 bool
 str_to_uint16(const char *str, uint16_t *res)
 {
@@ -33,4 +36,22 @@ const std::string currentTime()
     strftime(buf, sizeof(buf), "%X", &tstruct);
 
     return buf;
+}
+int getSocketError(int fd)
+{
+    int error = 0;
+    socklen_t errlen = sizeof(error);
+    if (getsockopt(fd,
+                   SOL_SOCKET,
+                   SO_ERROR,
+                   (void *) &error,
+                   &errlen) == 0) {
+#ifdef DEBUG
+        if (error != 0) {
+
+            LOG("(%d): Socket error = %s\n", fd, strerror(error));
+        }
+#endif
+    }
+    return error;
 }

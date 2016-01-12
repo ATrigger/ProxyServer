@@ -16,34 +16,17 @@ class connection
 {
 
 public:
-    typedef std::function<void()> callback;
-    void setOn_read(const callback &_on_read)
-    {
-        on_read = _on_read;
-        syncIO();
-    }
-    void setOn_write(const callback &_on_write)
-    {
-        on_write = _on_write;
-        syncIO();
-    }
-    int getFd() const
-    {
-        return fd;
-    }
-
-    void setFd(int fd)
-    {
-        this->fd = fd;
-    }
     connection(int, io::io_service &, std::function<void()>);
-    ~connection(){
-        if(destroyed) *destroyed = true;
-    }
+    typedef std::function<void()> callback;
+    void setOn_read(const callback &_on_read);
+    void setOn_write(const callback &_on_write);
+    void setOn_rw(const callback &_on_read, const callback &on_write);
+    void sleep();
+    int getFd() const;
+    ~connection();
     ssize_t read_over_connection(void *data, size_t size);
     size_t write_over_connection(void const *data, size_t size);
-    void write_all_over_connection(const char *data, size_t size);
-    int get_available_bytes();
+    int get_available_bytes() const;
     static connection connect(io::io_service& ep, ipv4_endpoint const& remote, callback on_disconnect);
     void forceDisconnect();
 protected:

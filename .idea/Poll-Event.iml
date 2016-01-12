@@ -6,17 +6,21 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/resolver.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/acceptor.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/echo_server.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/utils.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/proxycache.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/signal_fd.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/lrucache.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/utils.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/address.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/connection.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/connection.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/resolver.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/file.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/acceptor.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/connection.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/io_service.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/file.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/events.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/posix_sockets.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/utils.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/io_service.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/debug.h" isTestSource="false" />
@@ -31,12 +35,12 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/timer.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/outstring.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/outstring.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/main.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/events.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/main_proxy.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/io_service.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/proxycache.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.h" isTestSource="false" />
     </content>
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module-library">

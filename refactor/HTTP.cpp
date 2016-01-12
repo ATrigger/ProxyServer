@@ -174,7 +174,7 @@ bool request::is_validating() const
 
 bool response::is_cacheable() const
 {
-    return state == BODYFULL
+    return state == BODYFULL && checkCacheControl()
         && get_header("ETag") != ""
         && get_header("Vary") == ""
         && get_code() == "200";
@@ -183,4 +183,11 @@ bool response::is_cacheable() const
 request response::get_validating_request(std::string URI, std::string host) const
 {
     return request{"GET " + URI + " HTTP/1.1\r\nIf-None-Match: " + get_header("ETag") + "\r\nHost: " + host + "\r\n\r\n"};
+}
+bool response::checkCacheControl() const
+{
+    auto target = get_header("Cache-Control");
+    return target == "" || (
+        target.find("private")==target.npos &&
+        target.find("no-store")==target.npos); // true = cacheable, false = non-cacheable
 }

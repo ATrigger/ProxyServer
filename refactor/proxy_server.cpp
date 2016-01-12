@@ -19,24 +19,15 @@ proxy_server::inbound::inbound(proxy_server *parent)
           [this]
           {
               LOG("Disconnected sock %d", this->socket.getFd());
-              int error = 0;
-              socklen_t errlen = sizeof(error);
-              if (getsockopt(this->socket.getFd(),
-                             SOL_SOCKET,
-                             SO_ERROR,
-                             (void *) &error,
-                             &errlen) == 0) {
-                  if (error != 0)
-                      LOG("error = %s\n", strerror(error));
-              }
-              if (assigned){
+              getSocketError(this->socket.getFd());
+              if (assigned) {
                   INFO("Disconnecting assigned socket");
-                  assigned->socket.forceDisconnect();}
+                  assigned->socket.forceDisconnect();
+              }
               this->parent->connections.erase(this);
           }))
 {
-    socket.setOn_read(std::bind(&inbound::handleread, this));
-
+    wakeUp();
 }
 
 void proxy_server::inbound::handleread()
@@ -68,29 +59,28 @@ void proxy_server::inbound::handleread()
     if (requ->get_state() == request::FAIL) {
         sendBadRequest();
     }
-    if (requ->get_state() == request::BODYFULL) {
-        //std::cout << requ->get_request_text() << std::endl;
+    else if (requ->get_state() == request::BODYFULL) {
         parent->getResolver().sendDomainForResolve(requ->get_host());
         this->resolverConnection =
             parent->distribution.connect(
                 [this](resolver::resolverNode in)
                 { return this->onResolve(in); });
-        //socket.setOn_read(connection::callback());
     }
 }
 void proxy_server::inbound::sendBadRequest()
 {
     output.push(HTTP::placeholder());
-    socket.setOn_read(std::bind(&inbound::handleread, this));
-    socket.setOn_write(std::bind(&inbound::handlewrite, this));
+    wakeUp();
 }
 void proxy_server::inbound::sendNotFound()
 {
     output.push(HTTP::notFound());
-    socket.setOn_write(std::bind(&inbound::handlewrite, this));
-    socket.setOn_read(std::bind(&inbound::handleread, this));
+    wakeUp();
 }
-
+void proxy_server::inbound::wakeUp()
+{
+    socket.setOn_rw(std::bind(&inbound::handleread, this), std::bind(&inbound::handlewrite, this));
+}
 void proxy_server::inbound::handlewrite()
 {
     if (!output.empty()) {
@@ -98,18 +88,20 @@ void proxy_server::inbound::handlewrite()
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         string->operator+=(written);
-        LOG("(%d):Written %lu bytes to client",socket.getFd(),written);
+        LOG("(%d):Written %lu bytes to client", socket.getFd(), written);
         if (*string) {
             output.pop();
             INFO("Written all");
         }
     }
     if (output.empty()) {
+        if (assigned) assigned->askMore();
         socket.setOn_write(connection::callback());
     }
 }
-proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint, size_t t):
-    proxy_server(ep,local_endpoint)
+proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoint, size_t t)
+    :
+    proxy_server(ep, local_endpoint)
 {
     domainResolver.resize(t);
 }
@@ -120,21 +112,27 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
           INFO("Catched SIGINT or SIGTERM");
           this->stop = true;
       }, {SIGINT, SIGTERM}},
-      resolveEvent(ep,true, [this](uint32_t)
+      resolveEvent(ep, true, [this](uint32_t)
       {
           std::unique_lock<std::mutex> distributionLock(domainResolver.getDistributeMutex());
           auto target = domainResolver.getFirst();
           distributionLock.unlock();
           distribution(target);
-      })
-    ,domainResolver(resolveEvent,5),proxycache(10000)
+      }), domainResolver(resolveEvent, 5), proxycache(10000)
 {
     batya = &ep;
     ep.setCallback([this]()
                    {
-                       static int counter =0;
-                       counter ++;
-                       if(counter %10==0) LOG("Now connected: %lu",this->connections.size());
+#ifdef DEBUG
+                       static int counter = 0;
+                       counter++;
+                       if (counter % 10 == 0) {
+                           LOG("Now connected: %lu", this->connections.size());
+                           LOG("Cache entries: DNS: %lu. Pages: %lu",
+                               this->domainResolver.cacheSize(),
+                               this->proxycache.size());
+                       }
+#endif
                        return (stop && this->connections.size() == 0)
                               ? (1) // we can now exit
                               : (0); // clients in progress.
@@ -159,47 +157,6 @@ void proxy_server::on_new_connection()
     inbound *pcc = cc.get();
     connections.emplace(pcc, std::move(cc));
 }
-proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
-    :
-    remote(endpoint),assigned(ass),parent(ass->parent), timer(service.getClock(), proxy_server::connectionTimeout, [this]()
-{
-    LOG("(%d): Connection timeout.", socket.getFd());
-    assigned->sendNotFound();
-    socket.forceDisconnect();
-}), socket(connection::connect(service, endpoint, [&]()
-{
-    LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
-    if (socket.get_available_bytes() != 0) {
-        LOG("(%d): Disconnected with available BYTES!!!", socket.getFd());
-    }
-    int error = 0;
-    socklen_t errlen = sizeof(error);
-    if (getsockopt(this->socket.getFd(),
-                   SOL_SOCKET,
-                   SO_ERROR,
-                   (void *) &error,
-                   &errlen) == 0) {
-
-        if (error != 0) {
-            assigned->sendBadRequest();
-            LOG("error = %s\n", strerror(error));
-        }
-    }
-    assigned->assigned.reset();
-}))
-{
-    host = ass->requ->get_host();
-    URI = ass->requ->get_URI();
-    if(!ass->requ->is_validating()
-        && parent->proxycache.exists(host + URI)){
-        auto cache_entry = parent->proxycache.get(host + URI);
-        LOG("Cache hit: %s",URI.c_str());
-        output.push(cache_entry.get_validating_request(URI,host).get_request_text());
-    }
-    else output.push(ass->requ->get_request_text());
-    socket.setOn_write(std::bind(&outbound::handlewrite, this));
-
-}
 bool proxy_server::inbound::onResolve(resolver::resolverNode result)
 {
     if (result.host != requ->get_host()) return false;
@@ -217,6 +174,41 @@ bool proxy_server::inbound::onResolve(resolver::resolverNode result)
 proxy_server::~proxy_server()
 {
 }
+
+proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
+    :
+    remote(endpoint), assigned(ass), parent(ass->parent), timer(service.getClock(),
+                                                                proxy_server::connectionTimeout,
+                                                                [this]()
+                                                                {
+                                                                    LOG("(%d): Connection timeout.", socket.getFd());
+                                                                    assigned->sendNotFound();
+                                                                    socket.forceDisconnect();
+                                                                }), socket(connection::connect(service, endpoint, [&]()
+{
+    LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
+    if (socket.get_available_bytes() != 0) {
+        LOG("(%d): Disconnected with available BYTES!!!", socket.getFd());
+    }
+    if (getSocketError(this->socket.getFd()) != 0) {
+        assigned->sendBadRequest();
+    }
+    try_to_cache();
+    assigned->assigned.reset();
+}))
+{
+    validateRequest = ass->requ->is_validating();
+    host = ass->requ->get_host();
+    URI = ass->requ->get_URI();
+    if (!validateRequest
+        && (cacheHit = parent->proxycache.exists(host + URI))) {
+        auto cache_entry = parent->proxycache.get(host + URI);
+        LOG("Cache hit: %s", URI.c_str());
+        output.push(cache_entry.get_validating_request(URI, host).get_request_text());
+    }
+    else output.push(ass->requ->get_request_text());
+    socket.setOn_write(std::bind(&outbound::handlewrite, this));
+}
 void proxy_server::outbound::onRead()
 {
     int n = socket.get_available_bytes();
@@ -228,66 +220,40 @@ void proxy_server::outbound::onRead()
     }
     if (res == 0) // EOF
     {
-        try_to_cache();
-        socket.setOn_read(connection::callback());
-        socket.setOn_write(connection::callback());
+        LOG("(%d):Outbound EOF. Disconnected",socket.getFd());
+        socket.forceDisconnect();
         return;
     }
     buf[n] = '\0';
     LOG("(%d): response:", socket.getFd());
-    if(resp == nullptr){
-        resp = std::make_shared<response>(std::string(buf));
+    assigned->timer.recharge(proxy_server::idleTimeout);
+    if (!resp) {
+        resp = std::make_shared<response>(std::string(buf,n));
     }
     else {
-        resp->add_part({buf});
+        resp->add_part({buf,n});
     }
-    if(resp->get_state()>=HTTP::FIRSTLINE){
-        if(resp->get_code()!="200" && parent->proxycache.exists(host + URI)){
-            LOG("CACHE HIT (%d):(%s)",socket.getFd(),resp->get_code().c_str());
-            auto cache_entry = parent->proxycache.get(host + URI);
-            outstring out(std::string(cache_entry.get_text()));
-            out += assigned->socket.write_over_connection(out.get(), out.size());
-            if (!out) {
-                assigned->output.push(out);
-                assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
-            }
-            socket.setOn_read([this](){
-                int n = socket.get_available_bytes();
-                LOG("Bytes discarded: %d ", n);
-                char buf[n + 1];
-                ssize_t res = socket.read_over_connection(buf, n);
-                if (res == -1) {
-                    throw_error(errno, "NestedRead()");
-                }
-            });
-        }
-        else {
-            LOG("MODIFIED (%d):(%s)",socket.getFd(),resp->get_code().c_str());
-            outstring out(std::string(buf, n));
-            out += assigned->socket.write_over_connection(out.get(), out.size());
-            if (!out) {
-                assigned->output.push(out);
-                assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
-            }
-        }
-        assigned->timer.recharge(proxy_server::idleTimeout);
+    socket.setOn_read(connection::callback());
+    if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() != "200" && cacheHit) {
+        LOG("Cache valid (%d):(%s)", socket.getFd(), resp->get_code().c_str());
+        auto cache_entry = parent->proxycache.get(host + URI);
+        outstring out(std::string(cache_entry.get_text()));
+        assigned->trySend(out);
+        socket.setOn_read(std::bind(&outbound::onReadDiscard, this));
     }
-    //std::cout << buf << std::endl;
-    /*outstring out(std::string(buf, n));
-    out += assigned->socket.write_over_connection(out.get(), out.size());
-    if (!out) {
-        assigned->output.push(out);
-        assigned->socket.setOn_write(std::bind(&inbound::handlewrite, assigned));
-    }*/
+    else {
+        if (cacheHit) LOG("Couldn't use cache (%d):(%s)", socket.getFd(), resp->get_code().c_str());
+        outstring out(std::string(buf, n));
+        assigned->trySend(out);
+    }
 }
 void proxy_server::outbound::handlewrite()
 {
     if (!output.empty()) {
-        timer.turnOff();
+        timer.turnOff(); // Connection successfull. No need to check connection_timeout
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         LOG("(%d):Written:\r\n", socket.getFd());
-        //std::cout << string->text.substr(string->pp, string->pp + written) << std::endl;
         string->operator+=(written);
         if (*string) {
             output.pop();
@@ -296,8 +262,7 @@ void proxy_server::outbound::handlewrite()
     }
     if (output.empty()) {
         LOG("(%d):Now waiting for response", socket.getFd());
-        socket.setOn_read(std::bind(&outbound::onRead, this));
-        socket.setOn_write(connection::callback());
+        socket.setOn_rw(std::bind(&outbound::onRead, this), connection::callback());
     }
 }
 proxy_server::inbound::~inbound()
@@ -305,10 +270,6 @@ proxy_server::inbound::~inbound()
     if (resolverConnection.connected()) {
         resolverConnection.disconnect();
     }
-}
-events &proxy_server::getResolveEvent()
-{
-    return resolveEvent;
 }
 resolver &proxy_server::getResolver()
 {
@@ -321,9 +282,35 @@ void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
 
 void proxy_server::outbound::try_to_cache()
 {
-    if(resp != nullptr && resp->is_cacheable()){
-        std::string temp=host+URI;
-        LOG("Cached: %s (%s)",temp.c_str(),resp->get_header("ETag").c_str());
-        parent->proxycache.put(host + URI,*resp);
+    if (resp && resp->is_cacheable()) {
+        std::string temp = host + URI;
+        LOG("Cached: %s (%s)", temp.c_str(), resp->get_header("ETag").c_str());
+        parent->proxycache.put(host + URI, *resp);
     }
+}
+void proxy_server::outbound::onReadDiscard()
+{
+    int n = socket.get_available_bytes();
+    LOG("Bytes discarded: %d ", n);
+    char buf[n + 1];
+    ssize_t res = socket.read_over_connection(buf, n);
+    if (res == -1) {
+        throw_error(errno, "NestedRead()");
+    }
+}
+void proxy_server::outbound::askMore()
+{
+    LOG("(%d):Inbound socket(%d) requested more data",socket.getFd(),assigned->socket.getFd());
+    if (!cacheHit) {
+        socket.setOn_read(std::bind(&outbound::onRead, this));
+    }
+}
+void proxy_server::inbound::trySend(outstring &out)
+{
+    out += socket.write_over_connection(out.get(), out.size());
+    if (!out) {
+        output.push(out);
+        socket.setOn_write(std::bind(&inbound::handlewrite, this));
+    }
+    else if(assigned) assigned->askMore();
 }

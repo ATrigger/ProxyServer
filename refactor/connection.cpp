@@ -10,7 +10,7 @@
 #include "posix_sockets.h"
 #include "debug.h"
 connection::connection(int _fd, io::io_service &ep, std::function<void()> end)
-    : fd(_fd), on_disconnect(std::move(end)),destroyed(nullptr),
+    : fd(_fd), on_disconnect(std::move(end)), destroyed(nullptr),
       ioEntry(std::make_shared<io::io_entry>(ep, _fd, errFlags, [this](uint32_t events)
       {
           bool is_destroyed = false;
@@ -18,15 +18,15 @@ connection::connection(int _fd, io::io_service &ep, std::function<void()> end)
           try {
               if (events & EPOLLIN) {
                   on_read();
-                  if(is_destroyed) return;
+                  if (is_destroyed) return;
               }
               if (events & errFlags) {
                   on_disconnect();
-                  if(is_destroyed) return;
+                  if (is_destroyed) return;
               }
               if (events & EPOLLOUT) {
                   on_write();
-                  if(is_destroyed) return;
+                  if (is_destroyed) return;
               }
           }
           catch (...) {
@@ -34,7 +34,7 @@ connection::connection(int _fd, io::io_service &ep, std::function<void()> end)
               INFO("EPOLL execution failed");
               __throw_exception_again;
           }
-          destroyed=nullptr;
+          destroyed = nullptr;
       }))
 {
 
@@ -55,10 +55,6 @@ size_t connection::write_over_connection(void const *data, size_t size)
 {
     return write_some(fd, data, size);
 }
-void connection::write_all_over_connection(const char *data, size_t size)
-{
-    return write_all(fd, data, size);
-}
 connection connection::connect(io::io_service &ep, ipv4_endpoint const &remote, connection::callback on_disconnect)
 {
     int fd = make_socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK);
@@ -69,10 +65,10 @@ connection connection::connect(io::io_service &ep, ipv4_endpoint const &remote, 
 }
 void connection::forceDisconnect()
 {
-    LOG("Forced disconnect on %d fd",getFd());
+    LOG("Forced disconnect on %d fd", getFd());
     on_disconnect();
 }
-int connection::get_available_bytes()
+int connection::get_available_bytes() const
 {
     int n = -1;
     if (ioctl(fd, FIONREAD, &n) < 0) {
@@ -80,4 +76,34 @@ int connection::get_available_bytes()
         return 0;
     }
     return n;
+}
+int connection::getFd() const
+{
+    return fd;
+}
+void connection::setOn_write(const callback &_on_write)
+{
+    on_write = _on_write;
+    syncIO();
+}
+void connection::setOn_read(const callback &_on_read)
+{
+    on_read = _on_read;
+    syncIO();
+}
+connection::~connection()
+{
+    if (destroyed) *destroyed = true;
+}
+void connection::sleep()
+{
+    on_write = callback();
+    on_read = callback();
+    syncIO();
+}
+void connection::setOn_rw(const connection::callback &on_read, const connection::callback &on_write)
+{
+    this->on_read = on_read;
+    this->on_write = on_write;
+    syncIO();
 }

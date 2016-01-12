@@ -29,9 +29,10 @@ public:
     typedef std::queue<resolverNode> resolveQueue_t;
     resolver(events &, size_t);
     resolverNode getFirst();
-    std::mutex & getDistributeMutex();
     void sendDomainForResolve(std::string);
     void cacheDomain(std::string&,ipv4_endpoint&);
+    std::mutex & getDistributeMutex();
+    size_t cacheSize() const;
     void resize(size_t);
     ~resolver();
 private:

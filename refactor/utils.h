@@ -12,6 +12,7 @@
 bool
 str_to_uint16(const char *str, uint16_t *res);
 const std::string currentDateTime();
+int getSocketError(int fd);
 const std::string currentTime();
 
 
