@@ -19,6 +19,8 @@ public:
 
     lru_cache(size_t max_size)
         :_max_size(max_size){}
+    ~lru_cache(){}
+
     void remove(const key_t &key){
         auto it = _cache_items_map.find(key);
         if (it != _cache_items_map.end()) {
@@ -68,7 +70,7 @@ public:
         return _cache_items_map.size();
     }
 
-private:
+//private:
     std::list<key_value_pair_t> _cache_items_list;
     std::unordered_map<key_t, decltype(_cache_items_list.begin())> _cache_items_map;
     size_t _max_size;

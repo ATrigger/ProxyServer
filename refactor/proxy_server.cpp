@@ -197,17 +197,17 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
     assigned->assigned.reset();
 }))
 {
-    validateRequest = ass->requ->is_validating();
     host = ass->requ->get_host();
     URI = ass->requ->get_URI();
+    validateRequest = ass->requ->is_validating();
+    cacheHit = parent->proxycache.exists(host + URI);
     if (!validateRequest
-        && (cacheHit = parent->proxycache.exists(host + URI))) {
+        && cacheHit) {
         auto cache_entry = parent->proxycache.get(host + URI);
+        auto etag = cache_entry.get_header("ETag");
         LOG("Cache hit: %s", URI.c_str());
-        output.push(cache_entry.get_validating_request(URI, host).get_request_text());
         INFO("Validating request");
-        std::cerr<<cache_entry.get_validating_request(URI, host).get_request_text()<<std::endl;
-        std::cerr<<cache_entry.get_validating_request(URI, host).get_text()<<std::endl;
+        ass->requ->append_header("If-None-Match",etag);
     }
     else output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
@@ -228,7 +228,7 @@ void proxy_server::outbound::onRead()
         return;
     }
     buf[n] = '\0';
-    LOG("(%d): response:", socket.getFd());
+    std::cerr<<buf<<std::endl;
     assigned->timer.recharge(proxy_server::idleTimeout);
     if (!resp) {
         resp = std::make_shared<response>(std::string(buf,n));
@@ -240,17 +240,13 @@ void proxy_server::outbound::onRead()
     if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() == "304" && cacheHit) {//NOT MODIFIED 304
         LOG("Cache valid (%d):(%s)", socket.getFd(), resp->get_code().c_str());
         auto cache_entry = parent->proxycache.get(host + URI);
-        outstring out(std::string(cache_entry.get_text()));
+        outstring out(cache_entry.get_text());
         assigned->trySend(out);
         socket.setOn_read(std::bind(&outbound::onReadDiscard, this));
     }
     else {
         if (cacheHit) {
             LOG("Couldn't use cache (%d):(%s)", socket.getFd(), resp->get_code().c_str());
-            if (resp->get_code() == "403") // validation is forbidden
-            {
-                parent->proxycache.remove(host + URI);
-            }
             cacheHit = false;
         }
         outstring out(std::string(buf, n));
@@ -292,10 +288,10 @@ void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
 
 void proxy_server::outbound::try_to_cache()
 {
-    if (resp && resp->is_cacheable()) {
+    if (resp && resp->is_cacheable() && !cacheHit) {
         std::string temp = host + URI;
         LOG("Cached: %s (%s)", temp.c_str(), resp->get_header("ETag").c_str());
-        parent->proxycache.put(host + URI, *resp);
+        parent->proxycache.put(temp, response(*resp));
     }
 }
 void proxy_server::outbound::onReadDiscard()

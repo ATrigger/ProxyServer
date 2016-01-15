@@ -88,6 +88,7 @@ public:
     int get_state()
     { return state; };
     std::string get_header(std::string) const;
+    void append_header(std::string name, std::string value);
     std::string get_body() const
     { return body; }
     std::string get_text() const
@@ -107,6 +108,7 @@ protected:
     std::string text;
     std::string body;
     std::unordered_map<std::string, std::string> headers;
+
 };
 struct request: public HTTP
 {
@@ -135,7 +137,7 @@ struct response: public HTTP
     response(std::string text)
         : HTTP(text)
     { update_state(); };
-
+    response(const response&);
     bool is_cacheable() const;
     std::string get_code() const { return code; }
     request get_validating_request(std::string URI, std::string host) const;

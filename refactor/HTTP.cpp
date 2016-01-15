@@ -46,7 +46,12 @@ void HTTP::parse_headers()
         headers_end = crlf + 2;
     };
 }
-
+void HTTP::append_header(std::string name, std::string value)
+{
+    if (headers.find(name) == headers.end()) {
+        headers[name]=value;
+    }
+}
 std::string HTTP::get_header(std::string name) const
 {
     if (headers.find(name) != headers.end()) {
@@ -198,8 +203,8 @@ request response::get_validating_request(std::string URI, std::string host) cons
     temp.add_part("\r\nHost: ");
     temp.add_part(host);
     temp.add_part("\r\n\r\n");
-    LOG("Request: %s",temp.get_text().c_str());
-    LOG("Request-text: %s",temp.get_request_text().c_str());
+    LOG("Request: %s", temp.get_text().c_str());
+    LOG("Request-text: %s", temp.get_request_text().c_str());
     return temp;
 }
 bool response::checkCacheControl() const
@@ -208,4 +213,9 @@ bool response::checkCacheControl() const
     return target == "" || (
         target.find("private") == target.npos && target.find("no-cache") == target.npos &&
             target.find("no-store") == target.npos); // true = cacheable, false = non-cacheable
+}
+response::response(const response &r) : HTTP(r.text)
+{
+    code = r.code;
+    http_version = r.http_version;
 }
