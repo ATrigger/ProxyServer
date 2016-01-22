@@ -99,8 +99,6 @@ std::string request::get_URI()
 
 std::string request::get_host()
 {
-    if (method == "CONNECT")
-        return URI;
     if (host == "")
         host = get_header("Host");
     if (host == "")
@@ -128,7 +126,7 @@ void request::parse_first_line()
     URI = {first_space + 1, second_space};
     http_version = {second_space + 1, crlf};
 
-    if (method != "POST" && method != "GET" && method != "CONNECT") {
+    if (method != "POST" && method != "GET") {
         state = FAIL;
         return;
     }
