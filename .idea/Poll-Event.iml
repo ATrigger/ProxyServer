@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/CMakeLists.txt" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/resolver.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/acceptor.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/echo_server.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/address.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/utils.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/signal_fd.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/lrucache.h" isTestSource="false" />
@@ -20,12 +20,10 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/io_service.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/debug.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/address.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/timer.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/posix_sockets.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/signal_fd.h" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/echo_server.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/epoll_error.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/epoll_error.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/timer.h" isTestSource="false" />
@@ -33,7 +31,6 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/outstring.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.cpp" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/refactor/main.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/events.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/main_proxy.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/io_service.h" isTestSource="false" />

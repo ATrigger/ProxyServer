@@ -282,6 +282,8 @@ void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
     domainResolver.cacheDomain(string, endpoint);
 }
 
+
+
 void proxy_server::outbound::try_to_cache()
 {
     if (resp && resp->is_cacheable() && !cacheHit) {
@@ -289,6 +291,7 @@ void proxy_server::outbound::try_to_cache()
         LOG("Cached: %s (%s)", temp.c_str(), resp->get_header("ETag").c_str());
         parent->proxycache.put(temp, response(*resp));
     }
+
 }
 void proxy_server::outbound::onReadDiscard()
 {

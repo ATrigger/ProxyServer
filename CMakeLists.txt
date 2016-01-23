@@ -5,22 +5,6 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost REQUIRED COMPONENTS system thread)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDEBUG -g -O0 -std=c++11")
-set(ECHO_SOURCE
-        refactor/address.cpp
-        refactor/address.h
-        refactor/debug.h
-        refactor/HTTP.h
-        refactor/io_service.h
-        refactor/io_service.cpp
-        refactor/acceptor.cpp
-        refactor/acceptor.h
-        refactor/main.cpp
-        refactor/epoll_error.cpp
-
-        refactor/outstring.cpp
-        refactor/outstring.h
-        refactor/epoll_error.h
-        refactor/posix_sockets.cpp refactor/posix_sockets.h refactor/connection.h refactor/connection.cpp refactor/echo_server.cpp refactor/events.cpp refactor/events.h refactor/HTTP.cpp refactor/signal_fd.cpp refactor/signal_fd.h )
 set(NEW_SOURCE
         refactor/address.cpp
         refactor/address.h
@@ -45,6 +29,4 @@ set(NEW_SOURCE
         refactor/signal_fd.cpp refactor/signal_fd.h
         refactor/lrucache.h refactor/resolver.cpp refactor/resolver.h refactor/utils.h refactor/utils.cpp)
 add_executable(NEW ${NEW_SOURCE})
-add_executable(ECHO ${ECHO_SOURCE})
 target_link_libraries(NEW ${Boost_LIBRARIES})
-target_link_libraries(ECHO ${Boost_LIBRARIES})

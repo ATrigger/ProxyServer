@@ -12,9 +12,9 @@
 #include <boost/signals2.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/thread.hpp>
-#include <boost/thread/condition_variable.hpp>
 #include <mutex>
 #include <bits/stl_queue.h>
+#include <condition_variable>
 
 class resolver
 {
@@ -37,8 +37,8 @@ public:
 private:
     void worker();
     boost::lockfree::queue<std::string*,boost::lockfree::capacity<30>> domains;
-    boost::condition_variable newTask;
-    boost::mutex resolveMutex;
+    std::condition_variable newTask;
+    std::mutex resolveMutex;
     boost::thread_group resolvers;
     bool destroyThreads = false;
     std::mutex distributeMutex;

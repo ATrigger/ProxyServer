@@ -30,7 +30,7 @@ void resolver::worker()
     {
         while (true) {
 
-            boost::unique_lock<boost::mutex> lk(resolveMutex);
+            std::unique_lock<std::mutex> lk(resolveMutex);
 
             newTask.wait(lk, [this]()
             { return !this->domains.empty() || this->destroyThreads; });
