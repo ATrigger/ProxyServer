@@ -23,7 +23,7 @@ public:
     {
         resolverNode(std::string _host, ipv4_endpoint to, bool flag): host(_host), resolvedHost(to), ok(flag){}
         std::string host;
-        ipv4_endpoint resolvedHost;
+        ipv4_endpoint resolvedHost; // TODO: replace with boost::optional<ipv4_endpoint>
         bool ok;
     };
     typedef std::queue<resolverNode> resolveQueue_t;
@@ -40,7 +40,7 @@ private:
     std::condition_variable newTask;
     std::mutex resolveMutex;
     boost::thread_group resolvers;
-    bool destroyThreads = false;
+    bool destroyThreads = false; // TODO: make std::atomic<bool>
     std::mutex distributeMutex;
     resolveQueue_t resolverFinished;
     cache::lru_cache<std::string,ipv4_endpoint> dnsCache;

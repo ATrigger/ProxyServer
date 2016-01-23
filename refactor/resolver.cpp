@@ -3,6 +3,7 @@
 //
 
 #include <netdb.h>
+#include <cassert>
 #include <thread>
 #include "resolver.h"
 #include "debug.h"
@@ -24,6 +25,9 @@ resolver::resolver(events &events1, size_t t)
     : finisher(&events1), dnsCache(500)
 {
     for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
+    // TODO: if thread creation failed we should notify
+    // all previously created threads that they should quit
+    // and join them
 }
 void resolver::worker()
 {
@@ -38,6 +42,9 @@ void resolver::worker()
             std::string *domain;
             std::string port, name, input;
             this->domains.pop(domain);
+
+            // TODO: check if this domain is already cached
+
             input = *domain;
             name = input;
             port = "80";
@@ -89,6 +96,9 @@ void resolver::worker()
             else {
                 resolverFinished.push({input, {portShort, ipv4_address(std::string(buffer))},
                                        true}/*make_pair(input, ipv4_address(std::string(buffer)))*/);
+
+                // TODO: insert result into dnsCache and remove cacheDomain from public interface
+                // TODO: we should protect accesses to dnsCache with distributeMutex
             }
             finisher->add(1);
         }
@@ -106,6 +116,7 @@ void resolver::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
 }
 resolver::resolverNode resolver::getFirst()
 {
+    assert(!resolverFinished.empty());
     std::unique_lock<std::mutex> distributionLock(distributeMutex);
     auto result = resolverFinished.front();
     resolverFinished.pop();

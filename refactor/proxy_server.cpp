@@ -230,7 +230,7 @@ void proxy_server::outbound::onRead()
         resp = std::make_shared<response>(std::string(buf,n));
     }
     else {
-        resp->add_part({buf,n});
+        resp->add_part({buf,size_t(n)});
     }
     socket.setOn_read(connection::callback());
     if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() == "304" && cacheHit) {//NOT MODIFIED 304

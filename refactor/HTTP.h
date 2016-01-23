@@ -8,7 +8,6 @@
 
 #include <unordered_map>
 #include <string>
-#include <boost/algorithm/string.hpp>
 
 #include <sstream>
 #include <regex>
@@ -16,24 +15,7 @@
 class HTTP
 {
 public:
-    static std::unordered_map<std::string, std::string> parse(std::string in)
-    {
-        std::unordered_map<std::string, std::string> m;
 
-        std::istringstream resp(in);
-        std::string header;
-        std::string::size_type index;
-        while (std::getline(resp, header) && header != "\r") {
-            index = header.find(':', 0);
-            if (index != std::string::npos) {
-                m.insert(std::make_pair(
-                    boost::algorithm::trim_copy(header.substr(0, index)),
-                    boost::algorithm::trim_copy(header.substr(index + 1))
-                ));
-            }
-        }
-        return m;
-    }
     static std::string placeholder()
     {
         std::string request = std::string(

@@ -32,6 +32,7 @@ void io::timer::timer_service::process(clock_t::time_point point)
         if(empty()) break;
         if(queue.begin()->first > point) break;
         auto nearest = queue.begin();
+        nearest->second->parent = nullptr;
         try{
             nearest->second->on_wake();
         }

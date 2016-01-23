@@ -18,7 +18,7 @@ class io_entry;
 class io_service
 {
     friend class io_entry;
-    int default_timeout();
+    void default_timeout();
     std::function<int()> timeout;
     size_t timeoutMS = 1000;
     int epoll;

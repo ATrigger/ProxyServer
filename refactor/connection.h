@@ -11,6 +11,7 @@
 #include <memory>
 #include "io_service.h"
 #include "address.h"
+// TODO: make this define const
 #define errFlags (EPOLLERR|EPOLLRDHUP|EPOLLHUP)
 class connection
 {
@@ -35,6 +36,7 @@ protected:
     callback on_read;
     callback on_write;
     callback on_disconnect;
+    // TODO: check if shared_ptrs are neccessary
     std::shared_ptr<io::io_entry> ioEntry;
     int fd;
 };

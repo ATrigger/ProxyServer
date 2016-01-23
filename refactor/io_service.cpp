@@ -20,12 +20,11 @@ io::io_service::io_service()
 
 }
 
-int io::io_service::default_timeout()
+void io::io_service::default_timeout()
 {
     static int i = 0;
     i++;
     if(i%10==0)LOG("Timeouted: %d times.",i);
-
 }
 
 void io::io_service::control(int fd, int operation, uint32_t flags, io_entry *to)

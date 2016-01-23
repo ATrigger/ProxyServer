@@ -11,6 +11,7 @@
 #include "debug.h"
 connection::connection(int _fd, io::io_service &ep, std::function<void()> end)
     : fd(_fd), on_disconnect(std::move(end)), destroyed(nullptr),
+        // TODO: fd can leak if make_shared fails
       ioEntry(std::make_shared<io::io_entry>(ep, _fd, errFlags, [this](uint32_t events)
       {
           bool is_destroyed = false;

@@ -8,7 +8,7 @@
 #include <bits/errno.h>
 #include <time.h>
 #include <string>
-#include <boost/cerrno.hpp>
+#include <cerrno>
 bool
 str_to_uint16(const char *str, uint16_t *res);
 const std::string currentDateTime();
