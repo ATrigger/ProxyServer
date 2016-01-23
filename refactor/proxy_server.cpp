@@ -212,7 +212,7 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
 void proxy_server::outbound::onRead()
 {
     int n = socket.get_available_bytes();
-    LOG("Bytes available: %d ", n);
+//    LOG("Bytes available: %d ", n);
     char buf[n + 1];
     ssize_t res = socket.read_over_connection(buf, n);
     if (res == -1) {
@@ -255,7 +255,6 @@ void proxy_server::outbound::handlewrite()
         timer.turnOff(); // Connection successful. No need to check connection_timeout
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
-        LOG("(%d):Written:\r\n", socket.getFd());
         string->operator+=(written);
         if (*string) {
             output.pop();
@@ -322,4 +321,8 @@ void proxy_server::inbound::trySend(outstring &out)
 proxy_server::outbound::~outbound()
 {
     try_to_cache();
+}
+const std::string proxy_server::outbound::getHost()
+{
+    return host;
 }

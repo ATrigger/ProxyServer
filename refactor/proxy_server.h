@@ -82,6 +82,7 @@ class proxy_server
         void handlewrite();
         void onRead();
         void onReadDiscard();
+        const std::string getHost();
     private:
         void try_to_cache();
         void askMore();
