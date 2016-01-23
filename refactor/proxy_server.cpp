@@ -10,7 +10,7 @@ constexpr const io::timer::timer_service::clock_t::duration proxy_server::connec
 constexpr const io::timer::timer_service::clock_t::duration proxy_server::idleTimeout;
 
 proxy_server::inbound::inbound(proxy_server *parent)
-    : parent(parent), timer(parent->batya->getClock(), proxy_server::idleTimeout, [this]
+    : parent(parent), timer(parent->ios->getClock(), proxy_server::idleTimeout, [this]
 {
     LOG("Sock(inbound) %d timed out. Disconnecting", this->socket.getFd());
     this->socket.forceDisconnect();
@@ -114,13 +114,11 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
       }, {SIGINT, SIGTERM}},
       resolveEvent(ep, true, [this](uint32_t)
       {
-          std::unique_lock<std::mutex> distributionLock(domainResolver.getDistributeMutex());
           auto target = domainResolver.getFirst();
-          distributionLock.unlock();
           distribution(target);
       }), domainResolver(resolveEvent, 5), proxycache(10000)
 {
-    batya = &ep;
+    ios = &ep;
     ep.setCallback([this]()
                    {
 #ifdef DEBUG
@@ -166,7 +164,7 @@ bool proxy_server::inbound::onResolve(resolver::resolverNode result)
     }
     else {
         parent->cacheDomain(result.host, result.resolvedHost);
-        assigned = std::make_shared<outbound>(*parent->batya, result.resolvedHost, this);
+        assigned = std::make_shared<outbound>(*parent->ios, result.resolvedHost, this);
         requ.reset();
     }
     return true;
@@ -193,7 +191,6 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
     if (getSocketError(this->socket.getFd()) != 0) {
         assigned->sendBadRequest();
     }
-    try_to_cache();
     assigned->assigned.reset();
 }))
 {
@@ -209,7 +206,7 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
         INFO("Validating request");
         ass->requ->append_header("If-None-Match",etag);
     }
-    else output.push(ass->requ->get_request_text());
+    output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
 }
 void proxy_server::outbound::onRead()
@@ -228,7 +225,6 @@ void proxy_server::outbound::onRead()
         return;
     }
     buf[n] = '\0';
-    std::cerr<<buf<<std::endl;
     assigned->timer.recharge(proxy_server::idleTimeout);
     if (!resp) {
         resp = std::make_shared<response>(std::string(buf,n));
@@ -247,7 +243,7 @@ void proxy_server::outbound::onRead()
     else {
         if (cacheHit) {
             LOG("Couldn't use cache (%d):(%s)", socket.getFd(), resp->get_code().c_str());
-            cacheHit = false;
+            cacheHit = false; // we need to re-update cache;
         }
         outstring out(std::string(buf, n));
         assigned->trySend(out);
@@ -306,7 +302,7 @@ void proxy_server::outbound::onReadDiscard()
 }
 void proxy_server::outbound::askMore()
 {
-    LOG("(%d):Inbound socket(%d) requested more data",socket.getFd(),assigned->socket.getFd());
+//    LOG("(%d):Inbound socket(%d) requested more data",socket.getFd(),assigned->socket.getFd());
     if (!cacheHit) {
         socket.setOn_read(std::bind(&outbound::onRead, this));
     }
@@ -319,4 +315,8 @@ void proxy_server::inbound::trySend(outstring &out)
         socket.setOn_write(std::bind(&inbound::handlewrite, this));
     }
     else if(assigned) assigned->askMore();
+}
+proxy_server::outbound::~outbound()
+{
+    try_to_cache();
 }

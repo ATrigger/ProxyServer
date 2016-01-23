@@ -34,7 +34,6 @@ void io::io_service::control(int fd, int operation, uint32_t flags, io_entry *to
     event.data.ptr = to;
     event.events = flags;
     int res = epoll_ctl(epoll, operation, fd, &event);
-    LOG("fd %d modified %d flags: %u",fd,operation,flags);
     if (res < 0) throw_error(errno, "EPOLL_CTL");
 }
 

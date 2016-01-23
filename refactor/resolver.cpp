@@ -94,10 +94,6 @@ void resolver::worker()
         }
     }
 }
-std::mutex &resolver::getDistributeMutex()
-{
-    return distributeMutex;
-}
 resolver::~resolver()
 {
     destroyThreads = true;
@@ -110,6 +106,7 @@ void resolver::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
 }
 resolver::resolverNode resolver::getFirst()
 {
+    std::unique_lock<std::mutex> distributionLock(distributeMutex);
     auto result = resolverFinished.front();
     resolverFinished.pop();
     return result;

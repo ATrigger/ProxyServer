@@ -26,7 +26,7 @@ class proxy_server
 {
     constexpr static const io::timer::timer_service::clock_t::duration connectionTimeout =
 #ifdef DEBUG
-        std::chrono::seconds(25)
+        std::chrono::seconds(10)
 #else
     std::chrono::seconds(120)
 #endif
@@ -78,6 +78,7 @@ class proxy_server
     struct outbound
     {
         outbound(io::io_service &, ipv4_endpoint, inbound *);
+        ~outbound();
         void handlewrite();
         void onRead();
         void onReadDiscard();
@@ -106,7 +107,7 @@ public:
     void cacheDomain(std::string &, ipv4_endpoint &);
     events resolveEvent;
     signal_fd sigfd;
-    io::io_service *batya;
+    io::io_service *ios;
 private:
     void on_new_connection();
     friend struct inbound;
