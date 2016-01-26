@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <list>
 #include <unordered_map>
+#include <boost/optional/optional.hpp>
 namespace cache
 {
 
@@ -58,7 +59,6 @@ public:
             return it->second->second;
         }
     }
-
     bool exists(const key_t &key) const
     {
         return _cache_items_map.find(key) != _cache_items_map.end();

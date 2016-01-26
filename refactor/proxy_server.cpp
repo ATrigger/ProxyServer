@@ -159,12 +159,11 @@ bool proxy_server::inbound::onResolve(resolver::resolverNode result)
 {
     if (result.host != requ->get_host()) return false;
     this->resolverConnection.disconnect();
-    if (!result.ok) {
+    if (!result.resolvedHost) {
         sendNotFound();
     }
     else {
-        parent->cacheDomain(result.host, result.resolvedHost);
-        assigned = std::make_shared<outbound>(*parent->ios, result.resolvedHost, this);
+        assigned = std::make_shared<outbound>(*parent->ios, result.resolvedHost.get(), this);
         requ.reset();
     }
     return true;
@@ -175,24 +174,26 @@ proxy_server::~proxy_server()
 
 proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
     :
-    remote(endpoint), assigned(ass), parent(ass->parent), timer(service.getClock(),
-                                                                proxy_server::connectionTimeout,
-                                                                [this]()
-                                                                {
-                                                                    LOG("(%d): Connection timeout.", socket.getFd());
-                                                                    assigned->sendNotFound();
-                                                                    socket.forceDisconnect();
-                                                                }), socket(connection::connect(service, endpoint, [&]()
-{
-    LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
-    if (socket.get_available_bytes() != 0) {
-        LOG("(%d): Disconnected with available BYTES!!!", socket.getFd());
-    }
-    if (getSocketError(this->socket.getFd()) != 0) {
-        assigned->sendBadRequest();
-    }
-    assigned->assigned.reset();
-}))
+    remote(endpoint), assigned(ass), parent(ass->parent),
+    timer(service.getClock(),
+          proxy_server::connectionTimeout,
+          [this]()
+          {
+              LOG("(%d): Connection timeout.", socket.getFd());
+              assigned->sendNotFound();
+              socket.forceDisconnect();
+          }),
+    socket(connection::connect(service, endpoint, [&]()
+    {
+        LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
+        if (socket.get_available_bytes() != 0) {
+            LOG("(%d): Disconnected with available BYTES!!!", socket.getFd());
+        }
+        if (getSocketError(this->socket.getFd()) != 0) {
+            assigned->sendBadRequest();
+        }
+        assigned->assigned.reset();
+    }))
 {
     host = ass->requ->get_host();
     URI = ass->requ->get_URI();
@@ -204,7 +205,7 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
         auto etag = cache_entry.get_header("ETag");
         LOG("Cache hit: %s", URI.c_str());
         INFO("Validating request");
-        ass->requ->append_header("If-None-Match",etag);
+        ass->requ->append_header("If-None-Match", etag);
     }
     output.push(ass->requ->get_request_text());
     socket.setOn_write(std::bind(&outbound::handlewrite, this));
@@ -220,17 +221,17 @@ void proxy_server::outbound::onRead()
     }
     if (res == 0) // EOF
     {
-        LOG("(%d):Outbound EOF. Disconnected",socket.getFd());
+        LOG("(%d):Outbound EOF. Disconnected", socket.getFd());
         socket.forceDisconnect();
         return;
     }
     buf[n] = '\0';
     assigned->timer.recharge(proxy_server::idleTimeout);
     if (!resp) {
-        resp = std::make_shared<response>(std::string(buf,n));
+        resp = std::make_shared<response>(std::string(buf, n));
     }
     else {
-        resp->add_part({buf,size_t(n)});
+        resp->add_part({buf, size_t(n)});
     }
     socket.setOn_read(connection::callback());
     if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() == "304" && cacheHit) {//NOT MODIFIED 304
@@ -276,11 +277,6 @@ resolver &proxy_server::getResolver()
 {
     return domainResolver;
 }
-void proxy_server::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
-{
-    domainResolver.cacheDomain(string, endpoint);
-}
-
 
 
 void proxy_server::outbound::try_to_cache()
@@ -316,7 +312,7 @@ void proxy_server::inbound::trySend(outstring &out)
         output.push(out);
         socket.setOn_write(std::bind(&inbound::handlewrite, this));
     }
-    else if(assigned) assigned->askMore();
+    else if (assigned) assigned->askMore();
 }
 proxy_server::outbound::~outbound()
 {

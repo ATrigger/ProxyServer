@@ -26,9 +26,9 @@ namespace
                 return "ECONNRESET";
             case ECONNREFUSED:
                 return "ECONNREFUSED";
+            default:
+                return "<unknown error>";
         }
-
-        return "<unknown error>";
     }
 }
 

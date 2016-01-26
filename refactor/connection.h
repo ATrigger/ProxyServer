@@ -11,8 +11,8 @@
 #include <memory>
 #include "io_service.h"
 #include "address.h"
-// TODO: make this define const
-#define errFlags (EPOLLERR|EPOLLRDHUP|EPOLLHUP)
+// TODO: make this define const DONE
+const int errFlags = EPOLLERR | EPOLLRDHUP | EPOLLHUP;
 class connection
 {
 

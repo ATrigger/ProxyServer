@@ -10,22 +10,29 @@
 #include "utils.h"
 void resolver::sendDomainForResolve(std::string string)
 {
-    if (dnsCache.exists(string)) {
-        LOG("DNS hit: %s(%s)",string.c_str(),dnsCache.get(string).to_string().c_str());
-        resolverFinished.push({string, dnsCache.get(string), true});
-        finisher->add();
-    }
-    else {
-        domains.push(new std::string(string));
-        newTask.notify_one();
-    }
+//    if (dnsCache.exists(string)) {
+//        LOG("DNS hit: %s(%s)", string.c_str(), dnsCache.get(string).to_string().c_str());
+//        resolverFinished.push({string, dnsCache.get(string)});
+//        finisher->add();
+//    }
+//    else {
+    std::unique_lock<std::mutex> resolveLock(resolveMutex);
+    domains.push(string);
+    newTask.notify_one();
+//    }
     return;
 }
 resolver::resolver(events &events1, size_t t)
     : finisher(&events1), dnsCache(500)
 {
-    for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
-    // TODO: if thread creation failed we should notify
+    try {
+        for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
+    }
+    catch (std::exception &e) {
+        stopWorkers();
+        throw;
+    }
+    // TODO: if thread creation failed we should notify DONE
     // all previously created threads that they should quit
     // and join them
 }
@@ -33,22 +40,24 @@ void resolver::worker()
 {
     {
         while (true) {
-
-            std::unique_lock<std::mutex> lk(resolveMutex);
-
-            newTask.wait(lk, [this]()
+            std::unique_lock<std::mutex> resolveLock(resolveMutex);
+            newTask.wait(resolveLock, [this]()
             { return !this->domains.empty() || this->destroyThreads; });
             if (destroyThreads) return;
-            std::string *domain;
             std::string port, name, input;
-            this->domains.pop(domain);
-
-            // TODO: check if this domain is already cached
-
-            input = *domain;
+            input = domains.front();
+            domains.pop();
+            resolveLock.unlock();
+            std::unique_lock<std::mutex> distributeLock(distributeMutex);
+            if (dnsCache.exists(input)) {
+                LOG("DNS hit: %s", input.c_str());
+                sendToDistribution({input, dnsCache.get(input)});
+                continue;
+            }
+            distributeLock.unlock();
+            // TODO: check if this domain is already cached. DONE
             name = input;
             port = "80";
-            delete domain;
             auto it = input.find(':');
             if (it != input.npos) {
                 port = input.substr(it + 1);
@@ -58,16 +67,13 @@ void resolver::worker()
             bzero(&hints, sizeof(hints));
             hints.ai_family = AF_INET;
             hints.ai_socktype = SOCK_STREAM;
-            std::unique_lock<std::mutex> distribution(distributeMutex, std::defer_lock_t());
             int res = getaddrinfo(name.data(), port.data(), &hints, &r);
             if (res != 0) {
 
                 LOG("Resolve failed:%s(%s:%s)(%s). Signal proceed.",
                     input.data(), name.data(), port.data(),
                     gai_strerror(res));
-                distribution.lock();
-                resolverFinished.push({input, {}, false});
-                finisher->add();
+                sendToDistribution({input});
                 continue;
             }
             char buffer[INET6_ADDRSTRLEN];
@@ -81,38 +87,42 @@ void resolver::worker()
             freeaddrinfo(r);
             if (res != 0) {
                 LOG("Cannot transform to IP: %d Signal proceed", res);
-                distribution.lock();
-                resolverFinished.push({input, {}, false});
-                finisher->add(1);
+                sendToDistribution({input});
                 continue;
             }
             LOG("Looks like i got IP: %s for %s", buffer, input.c_str());
             uint16_t portShort;
-            distribution.lock();
             if (!str_to_uint16(port.c_str(), &portShort)) {
-                LOG("Invalid port(%s). Signal proceed",port.c_str());
-                resolverFinished.push({input, {}, false});
+                LOG("Invalid port(%s). Signal proceed", port.c_str());
+                sendToDistribution({input});
             }
             else {
-                resolverFinished.push({input, {portShort, ipv4_address(std::string(buffer))},
-                                       true}/*make_pair(input, ipv4_address(std::string(buffer)))*/);
-
-                // TODO: insert result into dnsCache and remove cacheDomain from public interface
-                // TODO: we should protect accesses to dnsCache with distributeMutex
+                sendToDistribution({input, {portShort, ipv4_address(std::string(buffer))}});
+                // TODO: insert result into dnsCache and remove cacheDomain from public interface DONE
+                // TODO: we should protect accesses to dnsCache with distributeMutex DONE
             }
-            finisher->add(1);
         }
     }
 }
 resolver::~resolver()
 {
+    stopWorkers();
+}
+void resolver::sendToDistribution(const resolverNode &n)
+{
+    std::unique_lock<std::mutex> distribution(distributeMutex);
+    distribution.lock();
+    if(n.resolvedHost) dnsCache.put(n.host,n.resolvedHost.get());
+    resolverFinished.push(n);
+    finisher->add();
+}
+void resolver::stopWorkers()
+{
+    std::unique_lock<std::mutex> lk(resolveMutex);
     destroyThreads = true;
+    lk.unlock();
     newTask.notify_all();
     resolvers.join_all();
-}
-void resolver::cacheDomain(std::string &string, ipv4_endpoint &endpoint)
-{
-    dnsCache.put(string, endpoint);
 }
 resolver::resolverNode resolver::getFirst()
 {
@@ -124,10 +134,8 @@ resolver::resolverNode resolver::getFirst()
 }
 void resolver::resize(size_t t)
 {
-    destroyThreads=true;
-    newTask.notify_all();
-    resolvers.join_all();
-    destroyThreads=false;
+    stopWorkers();
+    destroyThreads = false;
     for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
 }
 size_t resolver::cacheSize() const

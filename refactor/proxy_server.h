@@ -105,7 +105,6 @@ public:
     ~proxy_server();
     ipv4_endpoint local_endpoint() const;
     resolver &getResolver();
-    void cacheDomain(std::string &, ipv4_endpoint &);
     events resolveEvent;
     signal_fd sigfd;
     io::io_service *ios;
