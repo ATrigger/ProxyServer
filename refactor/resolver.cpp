@@ -25,6 +25,7 @@ void resolver::sendDomainForResolve(std::string string)
 resolver::resolver(events &events1, size_t t)
     : finisher(&events1), dnsCache(500)
 {
+    LOG("Starting with %lu workers",t);
     try {
         for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
     }
@@ -47,14 +48,14 @@ void resolver::worker()
             std::string port, name, input;
             input = domains.front();
             domains.pop();
-            resolveLock.unlock();
             std::unique_lock<std::mutex> distributeLock(distributeMutex);
-            if (dnsCache.exists(input)) {
+            bool hit = dnsCache.exists(input);
+            distributeLock.unlock();
+            if (hit) {
                 LOG("DNS hit: %s", input.c_str());
                 sendToDistribution({input, dnsCache.get(input)});
                 continue;
             }
-            distributeLock.unlock();
             // TODO: check if this domain is already cached. DONE
             name = input;
             port = "80";
@@ -111,8 +112,10 @@ resolver::~resolver()
 void resolver::sendToDistribution(const resolverNode &n)
 {
     std::unique_lock<std::mutex> distribution(distributeMutex);
-    distribution.lock();
-    if(n.resolvedHost) dnsCache.put(n.host,n.resolvedHost.get());
+    if(n.resolvedHost && !dnsCache.exists(n.host)) {
+        LOG("Put in cache: %s",n.host.c_str());
+        dnsCache.put(n.host,n.resolvedHost.get());
+    }
     resolverFinished.push(n);
     finisher->add();
 }
@@ -137,6 +140,7 @@ void resolver::resize(size_t t)
     stopWorkers();
     destroyThreads = false;
     for (auto i = 0; i < t; i++) resolvers.create_thread(boost::bind(&resolver::worker, this));
+    LOG("Resized to %lu workers",t);
 }
 size_t resolver::cacheSize() const
 {

@@ -8,7 +8,7 @@
 int main()
 {
     io::io_service ep;
-    proxy_server proxyServer(ep, ipv4_endpoint(8080, ipv4_address::any()),8);
+    proxy_server proxyServer(ep, ipv4_endpoint(8080, ipv4_address::any()),10);
 
     ipv4_endpoint echo_server_endpoint = proxyServer.local_endpoint();
     std::cout << "bound to " << echo_server_endpoint << std::endl;

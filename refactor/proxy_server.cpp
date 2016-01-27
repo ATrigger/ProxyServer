@@ -61,6 +61,7 @@ void proxy_server::inbound::handleread()
     }
     else if (requ->get_state() == request::BODYFULL) {
         parent->getResolver().sendDomainForResolve(requ->get_host());
+        LOG("(%d):Sent to resolver.", socket.getFd());
         this->resolverConnection =
             parent->distribution.connect(
                 [this](resolver::resolverNode in)
