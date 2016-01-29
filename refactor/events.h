@@ -17,12 +17,11 @@ public:
     events(io::io_service&, callback);
     void add(uint64_t i=1);
     void setCallback(callback);
-    int createfd(bool);
+    handle createfd(bool);
 private:
+    handle fd;
     io::io_entry ioEntry;
     callback on_ready;
-private:
-    int fd;
 };
 
 

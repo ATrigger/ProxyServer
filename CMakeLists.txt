@@ -4,9 +4,8 @@ set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost REQUIRED COMPONENTS system thread)
-include_directories(${BOOST_INCLUDEDIR})
-#-fsanitize=address
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDEBUG -g -O0 -std=c++11 ")
+include_directories(${Boost_INCLUDEDIR})
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDEBUG -g -O0 -std=c++11 -fsanitize=address")
 set(NEW_SOURCE
         refactor/address.cpp
         refactor/address.h
@@ -29,6 +28,6 @@ set(NEW_SOURCE
         refactor/events.cpp refactor/events.h
         refactor/HTTP.cpp
         refactor/signal_fd.cpp refactor/signal_fd.h
-        refactor/lrucache.h refactor/resolver.cpp refactor/resolver.h refactor/utils.h refactor/utils.cpp)
+        refactor/lrucache.h refactor/resolver.cpp refactor/resolver.h refactor/utils.h refactor/utils.cpp refactor/handle.cpp refactor/handle.h)
 add_executable(NEW ${NEW_SOURCE})
 target_link_libraries(NEW ${Boost_LIBRARIES})

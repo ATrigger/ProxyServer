@@ -19,11 +19,13 @@ public:
     signal_fd(io::io_service&,callback,std::vector<signal>);
     void modifymask(std::vector<signal>&);
 private:
-    int createfd(std::vector<signal> &vector);
+    handle createfd(std::vector<signal> &vector);
+    handle createfd();
+    handle fd;
     callback on_ready;
     io::io_entry ioEntry;
-    int fd;
-    int createfd();
+
+
 };
 
 

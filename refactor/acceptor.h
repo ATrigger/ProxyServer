@@ -15,13 +15,13 @@ public:
     acceptor(io::io_service &, ipv4_endpoint const &,std::function<void ()>);
     ipv4_endpoint local_endpoint() const;
 
-    int getFd() const
+    handle getFd() const
     {
         return fd;
     }
     connection accept(std::function<void()> eoc);
 private:
-    int fd;
+    handle fd;
     std::function<void ()> accept_connection;
     io::io_entry ioEntry;
     friend class io::io_service;

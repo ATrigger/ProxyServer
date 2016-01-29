@@ -12,13 +12,13 @@ constexpr const io::timer::timer_service::clock_t::duration proxy_server::idleTi
 proxy_server::inbound::inbound(proxy_server *parent)
     : parent(parent), timer(parent->ios->getClock(), proxy_server::idleTimeout, [this]
 {
-    LOG("Sock(inbound) %d timed out. Disconnecting", this->socket.getFd());
+    LOG("Sock(inbound) %d timed out. Disconnecting", this->socket.getFd().get_raw());
     this->socket.forceDisconnect();
 }),
       socket(parent->ss.accept(
           [this]
           {
-              LOG("Disconnected sock %d", this->socket.getFd());
+              LOG("Disconnected sock %d", this->socket.getFd().get_raw());
               getSocketError(this->socket.getFd());
               if (assigned) {
                   INFO("Disconnecting assigned socket");
@@ -33,9 +33,9 @@ proxy_server::inbound::inbound(proxy_server *parent)
 void proxy_server::inbound::handleread()
 {
     int n = socket.get_available_bytes();
-    LOG("(%d):Bytes available: %d ", socket.getFd(), n);
+    LOG("(%d):Bytes available: %d ", socket.getFd().get_raw(), n);
     if (n < 1) {
-        LOG("(%d):No bytes available. EOF.", socket.getFd());
+        LOG("(%d):No bytes available. EOF.", socket.getFd().get_raw());
         socket.forceDisconnect();
         return;
     }
@@ -43,7 +43,7 @@ void proxy_server::inbound::handleread()
     auto res = socket.read_over_connection(buff, n);
     buff[n] = '\0';
     if (res == -1) {
-        throw_error(errno, "Inbound::Handeread()");
+        throw_error(errno, "Inbound::Handleread()");
     }
     if (res == 0) {
         socket.forceDisconnect();
@@ -61,7 +61,7 @@ void proxy_server::inbound::handleread()
     }
     else if (requ->get_state() == request::BODYFULL) {
         parent->getResolver().sendDomainForResolve(requ->get_host());
-        LOG("(%d):Sent to resolver.", socket.getFd());
+        LOG("(%d):Sent to resolver.", socket.getFd().get_raw());
         this->resolverConnection =
             parent->distribution.connect(
                 [this](resolver::resolverNode in)
@@ -89,7 +89,7 @@ void proxy_server::inbound::handlewrite()
         auto string = &output.front();
         size_t written = socket.write_over_connection(string->get(), string->size());
         string->operator+=(written);
-        LOG("(%d):Written %lu bytes to client", socket.getFd(), written);
+        LOG("(%d):Written %lu bytes to client", socket.getFd().get_raw(), written);
         if (*string) {
             output.pop();
             INFO("Written all");
@@ -125,9 +125,10 @@ proxy_server::proxy_server(io::io_service &ep, ipv4_endpoint const &local_endpoi
 #ifdef DEBUG
                        static int counter = 0;
                        counter++;
+
                        if (counter % 10 == 0) {
                            LOG("Now connected: %lu", this->connections.size());
-                           LOG("Cache entries: DNS: %lu. Pages: %lu",
+                           LOG("Cache entries DNS: %lu, pages: %lu",
                                this->domainResolver.cacheSize(),
                                this->proxycache.size());
                        }
@@ -180,15 +181,15 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
           proxy_server::connectionTimeout,
           [this]()
           {
-              LOG("(%d): Connection timeout.", socket.getFd());
+              LOG("(%d): Connection timeout.", socket.getFd().get_raw());
               assigned->sendNotFound();
               socket.forceDisconnect();
           }),
     socket(connection::connect(service, endpoint, [&]()
     {
-        LOG("Disconnected from (%d):%s", socket.getFd(), remote.to_string().c_str());
+        LOG("Disconnected from (%d):%s", socket.getFd().get_raw(), remote.to_string().c_str());
         if (socket.get_available_bytes() != 0) {
-            LOG("(%d): Disconnected with available BYTES!!!", socket.getFd());
+            LOG("(%d): Disconnected with available BYTES!!!", socket.getFd().get_raw());
         }
         if (getSocketError(this->socket.getFd()) != 0) {
             assigned->sendBadRequest();
@@ -222,7 +223,7 @@ void proxy_server::outbound::onRead()
     }
     if (res == 0) // EOF
     {
-        LOG("(%d):Outbound EOF. Disconnected", socket.getFd());
+        LOG("(%d):Outbound EOF. Disconnected", socket.getFd().get_raw());
         socket.forceDisconnect();
         return;
     }
@@ -236,7 +237,7 @@ void proxy_server::outbound::onRead()
     }
     socket.setOn_read(connection::callback());
     if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() == "304" && cacheHit) {//NOT MODIFIED 304
-        LOG("Cache valid (%d):(%s)", socket.getFd(), resp->get_code().c_str());
+        LOG("Cache valid (%d):(%s)", socket.getFd().get_raw(), resp->get_code().c_str());
         auto cache_entry = parent->proxycache.get(host + URI);
         outstring out(cache_entry.get_text());
         assigned->trySend(out);
@@ -244,7 +245,7 @@ void proxy_server::outbound::onRead()
     }
     else {
         if (cacheHit) {
-            LOG("Couldn't use cache (%d):(%s)", socket.getFd(), resp->get_code().c_str());
+            LOG("Couldn't use cache (%d):(%s)", socket.getFd().get_raw(), resp->get_code().c_str());
             cacheHit = false; // we need to re-update cache;
         }
         outstring out(std::string(buf, n));
@@ -260,11 +261,9 @@ void proxy_server::outbound::handlewrite()
         string->operator+=(written);
         if (*string) {
             output.pop();
-            LOG("(%d):Written all", socket.getFd());
         }
     }
     if (output.empty()) {
-        LOG("(%d):Now waiting for response", socket.getFd());
         socket.setOn_rw(std::bind(&outbound::onRead, this), connection::callback());
     }
 }

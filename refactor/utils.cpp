@@ -6,6 +6,7 @@
 #include <string.h>
 #include "utils.h"
 #include "debug.h"
+#include "handle.h"
 bool
 str_to_uint16(const char *str, uint16_t *res)
 {
@@ -37,11 +38,11 @@ const std::string currentTime()
 
     return buf;
 }
-int getSocketError(int fd)
+int getSocketError(const handle& fd)
 {
     int error = 0;
     socklen_t errlen = sizeof(error);
-    if (getsockopt(fd,
+    if (getsockopt(fd.get_raw(),
                    SOL_SOCKET,
                    SO_ERROR,
                    (void *) &error,
@@ -49,7 +50,7 @@ int getSocketError(int fd)
 #ifdef DEBUG
         if (error != 0) {
 
-            LOG("(%d): Socket error = %s\n", fd, strerror(error));
+            LOG("(%d): Socket error = %s\n", fd.get_raw(), strerror(error));
         }
 #endif
     }

@@ -42,7 +42,7 @@ void io::timer::timer_service::process(clock_t::time_point point)
         catch(...){
             INFO("Couldn't process timer due to an unknown error");
         }
-        remove(nearest->second);
+        queue.erase(nearest);
     }
 }
 io::timer::timer_element::timer_element():parent(nullptr)

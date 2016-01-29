@@ -7,6 +7,7 @@
 #include <string>
 #include <fcntl.h>
 #include "epoll_error.h"
+#include "handle.h"
 
 int make_socket(int domain, int type) {
     int fd = ::socket(domain, type, 0);
@@ -16,20 +17,20 @@ int make_socket(int domain, int type) {
     return fd;
 }
 
-void start_listen(int fd) {
-    int res = ::listen(fd, SOMAXCONN);
+void start_listen(handle& fd) {
+    int res = ::listen(fd.get_raw(), SOMAXCONN);
     if (res == -1)
         throw_error(errno, "listen()");
 }
 
-void bind_socket(int fd, uint16_t port_net, uint32_t addr_net) {
+void bind_socket(handle& fd, uint16_t port_net, uint32_t addr_net) {
     sockaddr_in saddr{};
     int optval =1;
-    setsockopt(fd,SOL_SOCKET,SO_REUSEPORT,&optval,sizeof(optval));
+    setsockopt(fd.get_raw(),SOL_SOCKET,SO_REUSEPORT,&optval,sizeof(optval));
     saddr.sin_family = AF_INET;
     saddr.sin_port = port_net;
     saddr.sin_addr.s_addr = addr_net;
-    int res = ::bind(fd, reinterpret_cast<sockaddr const *>(&saddr), sizeof saddr);
+    int res = ::bind(fd.get_raw(), reinterpret_cast<sockaddr const *>(&saddr), sizeof saddr);
     if (res == -1)
         throw_error(errno, "bind()");
 }
@@ -45,24 +46,24 @@ void connect_socket(int fd, uint16_t port_net, uint32_t addr_net) {
         throw_error(errno, "connect()");
 }
 
-int get_fd_flags(int fd) {
-    int res = fcntl(fd, F_GETFL, 0);
+int get_fd_flags(handle& fd) {
+    int res = fcntl(fd.get_raw(), F_GETFL, 0);
     if (res == -1)
         throw_error(errno, "fcntl(F_GETFL)");
     return res;
 }
 
-void set_fd_flags(int fd, int flags) {
-    int res = fcntl(fd, F_SETFL, flags);
+void set_fd_flags(handle& fd, int flags) {
+    int res = fcntl(fd.get_raw(), F_SETFL, flags);
     if (res == -1)
         throw_error(errno, "fcntl(F_SETFL)");
 }
 
-size_t write_some(int fd, void const* data, std::size_t size)
+size_t write_some(handle& fd, void const* data, std::size_t size)
 {
 
 
-    ssize_t res = write(fd, data, size);
+    ssize_t res = write(fd.get_raw(), data, size);
     if (res == -1)
     {
         int err = errno;
@@ -73,7 +74,7 @@ size_t write_some(int fd, void const* data, std::size_t size)
     return static_cast<size_t>(res);
 }
 
-void write_all(int fdc, const char *data, std::size_t size)
+void write_all(handle& fdc, const char *data, std::size_t size)
 {
 
     ssize_t total_bytes_written = 0;
@@ -90,15 +91,15 @@ void write_all(int fdc, const char *data, std::size_t size)
     }
 }
 
-void write(int fd, std::string const& str)
+void write(handle& fd, std::string const& str)
 {
 
     write_all(fd, str.data(), str.size());
 }
 
-ssize_t read_some(int fd, void* data, size_t size)
+ssize_t read_some(handle& fd, void* data, size_t size)
 {
-    ssize_t res = ::read(fd, data, size);
+    ssize_t res = ::read(fd.get_raw(), data, size);
     if (res == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
         throw_error(errno, "read()");
     return res;

@@ -45,7 +45,6 @@ namespace io
         private:
             timer_service *parent;
             clock_t::time_point wake;
-            uint64_t wake_time;
             callback_t on_wake;
             friend class timer_service;
         };

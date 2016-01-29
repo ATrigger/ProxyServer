@@ -6,7 +6,8 @@
 #include <unistd.h>
 #include "signal_fd.h"
 #include "debug.h"
-int signal_fd::createfd(std::vector<signal> &vector)
+#include "posix_sockets.h"
+handle signal_fd::createfd(std::vector<signal> &vector)
 {
     int sfd;
     sigset_t mask;
@@ -23,9 +24,9 @@ int signal_fd::createfd(std::vector<signal> &vector)
     if (sfd < 0) {
         throw_error(errno, "signalfd(-1)");
     }
-    return sfd;
+    return handle(sfd);
 }
-int signal_fd::createfd()
+handle signal_fd::createfd()
 {
     int sfd;
     sigset_t mask;
@@ -34,7 +35,7 @@ int signal_fd::createfd()
     if(sfd <0){
         throw_error(errno,"signalfd(-1,empty)");
     }
-    return sfd;
+    return handle(sfd);
 }
 void signal_fd::modifymask(std::vector<signal> &vector)
 {
@@ -49,7 +50,7 @@ void signal_fd::modifymask(std::vector<signal> &vector)
     if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
         throw_error(errno, "sigprocmask()");
     }
-    sfd = signalfd(fd, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
+    sfd = signalfd(fd.get_raw(), &mask, SFD_CLOEXEC | SFD_NONBLOCK);
     if(sfd < 0){
         throw_error(errno,"signalfd()");
     }
@@ -57,14 +58,13 @@ void signal_fd::modifymask(std::vector<signal> &vector)
 signal_fd::signal_fd(io::io_service &service,
                      signal_fd::callback callback,
                      std::vector<signal_fd::signal> vector)
-    : on_ready(std::move(callback)),
-      ioEntry(service,createfd(vector),EPOLLIN,[this](uint32_t)
+    : on_ready(std::move(callback)),fd(createfd(vector)),
+      ioEntry(service,fd,EPOLLIN,[this](uint32_t)
       {
 
           signalfd_siginfo sigfd;
-          read(fd, &sigfd, sizeof(sigfd));
+          read_some(fd, &sigfd, sizeof(sigfd));
           this->on_ready(sigfd);
       })
 {
-    fd = ioEntry.getFd();
 }

@@ -22,6 +22,7 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/debug.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/timer.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.cpp" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/handle.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/posix_sockets.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/signal_fd.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/epoll_error.cpp" isTestSource="false" />
@@ -29,6 +30,7 @@
       <sourceFolder url="file://$MODULE_DIR$/refactor/timer.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/outstring.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/outstring.h" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/refactor/handle.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/proxy_server.h" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/HTTP.cpp" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/refactor/events.h" isTestSource="false" />

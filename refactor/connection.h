@@ -11,8 +11,10 @@
 #include <memory>
 #include "io_service.h"
 #include "address.h"
+#include "handle.h"
+
 // TODO: make this define const DONE
-const int errFlags = EPOLLERR | EPOLLRDHUP | EPOLLHUP;
+const uint32_t errFlags = EPOLLERR | EPOLLRDHUP | EPOLLHUP;
 class connection
 {
 
@@ -23,7 +25,7 @@ public:
     void setOn_write(const callback &_on_write);
     void setOn_rw(const callback &_on_read, const callback &on_write);
     void sleep();
-    int getFd() const;
+    const handle& getFd() const;
     ~connection();
     ssize_t read_over_connection(void *data, size_t size);
     size_t write_over_connection(void const *data, size_t size);
@@ -31,13 +33,14 @@ public:
     static connection connect(io::io_service& ep, ipv4_endpoint const& remote, callback on_disconnect);
     void forceDisconnect();
 protected:
+    handle fd;
     bool *destroyed;
     void syncIO();
     callback on_read;
     callback on_write;
     callback on_disconnect;
-    // TODO: check if shared_ptrs are neccessary
-    std::shared_ptr<io::io_entry> ioEntry;
-    int fd;
+    // TODO: check if shared_ptrs are neccessary. DONE
+    io::io_entry ioEntry;
+
 };
 #endif //POLL_EVENT_CLIENT_H

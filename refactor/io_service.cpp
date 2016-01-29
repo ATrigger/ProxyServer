@@ -27,13 +27,14 @@ void io::io_service::default_timeout()
     if(i%10==0)LOG("Timeouted: %d times.",i);
 }
 
-void io::io_service::control(int fd, int operation, uint32_t flags, io_entry *to)
+void io::io_service::control(handle& fd, int operation, uint32_t flags, io_entry *to)
 {
     epoll_event event;
     event.data.ptr = to;
     event.events = flags;
-    int res = epoll_ctl(epoll, operation, fd, &event);
-    if (res < 0) throw_error(errno, "EPOLL_CTL");
+    int res = epoll_ctl(epoll, operation, fd.get_raw(), &event);
+    if (res < 0)
+        throw_error(errno, "EPOLL_CTL");
 }
 
 int io::io_service::run()
@@ -80,9 +81,9 @@ int io::io_service::loop()
     return 0;
 }
 
-void io::io_service::removefd(int i)
+void io::io_service::removefd(handle& i)
 {
-    int res = epoll_ctl(epoll, EPOLL_CTL_DEL, i, nullptr);
+    int res = epoll_ctl(epoll, EPOLL_CTL_DEL, i.get_raw(), nullptr);
     if (res < 0)throw_error(errno, "EPOLL_DEL");
 }
 
@@ -96,10 +97,10 @@ void io::io_service::setHolder(void *holder)
     io_service::holder = holder;
 }
 
-io::io_entry::io_entry(io::io_service &service, int fd, uint32_t flags, std::function<void(uint32_t)> function)
+io::io_entry::io_entry(io::io_service &service, handle& fd, uint32_t flags, std::function<void(uint32_t)> function)
     : fd(fd), events(flags), parent(&service), callback(function)
 {
-    service.control(fd, EPOLL_CTL_ADD, flags, this);
+    service.control(this->fd, EPOLL_CTL_ADD, flags, this);
 }
 void io::io_entry::modify(uint32_t flags)
 {
@@ -119,10 +120,6 @@ void io::io_entry::sync()
 }
 io::io_entry::~io_entry()
 {
-    if (parent) {
-        parent->removefd(fd);
-    }
-    close(fd);
 }
 void io::io_service::setCallback(std::function<int()> function)
 {
