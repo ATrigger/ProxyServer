@@ -22,7 +22,7 @@ proxy_server::inbound::inbound(proxy_server *parent)
               getSocketError(this->socket.getFd());
               if (assigned) {
                   INFO("Disconnecting assigned socket");
-                  assigned->socket.forceDisconnect();
+                  assigned->socket->forceDisconnect();
               }
               this->parent->connections.erase(this);
           }))
@@ -30,10 +30,10 @@ proxy_server::inbound::inbound(proxy_server *parent)
     wakeUp();
 }
 
-void proxy_server::inbound::handleread()
+void proxy_server::inbound::handleRead()
 {
-    int n = socket.get_available_bytes();
-    LOG("(%d):Bytes available: %d ", socket.getFd().get_raw(), n);
+    size_t n = socket.get_available_bytes();
+    LOG("(%d):Bytes available: %lu ", socket.getFd().get_raw(), n);
     if (n < 1) {
         LOG("(%d):No bytes available. EOF.", socket.getFd().get_raw());
         socket.forceDisconnect();
@@ -80,9 +80,9 @@ void proxy_server::inbound::sendNotFound()
 }
 void proxy_server::inbound::wakeUp()
 {
-    socket.setOn_rw(std::bind(&inbound::handleread, this), std::bind(&inbound::handlewrite, this));
+    socket.setOn_rw(std::bind(&inbound::handleRead, this), std::bind(&inbound::handleWrite, this));
 }
-void proxy_server::inbound::handlewrite()
+void proxy_server::inbound::handleWrite()
 {
     if (!output.empty()) {
         timer.recharge(proxy_server::idleTimeout);
@@ -165,7 +165,12 @@ bool proxy_server::inbound::onResolve(resolver::resolverNode result)
         sendNotFound();
     }
     else {
-        assigned = std::make_shared<outbound>(*parent->ios, result.resolvedHost.get(), this);
+        if(!assigned) assigned = std::make_shared<outbound>(this);
+        if(assigned->getHost()!=requ->get_host()) assigned->perform_connection(result.resolvedHost.get());
+#ifdef DEBUG
+        if(assigned->getHost() == requ->get_host()) INFO("FAST PATH");
+#endif
+        assigned->form_request();
         requ.reset();
     }
     return true;
@@ -173,33 +178,36 @@ bool proxy_server::inbound::onResolve(resolver::resolverNode result)
 proxy_server::~proxy_server()
 {
 }
-
-proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint, inbound *ass)
+proxy_server::outbound::outbound(inbound *ass)
     :
-    remote(endpoint), assigned(ass), parent(ass->parent),
-    timer(service.getClock(),
-          proxy_server::connectionTimeout,
-          [this]()
-          {
-              LOG("(%d): Connection timeout.", socket.getFd().get_raw());
-              assigned->sendNotFound();
-              socket.forceDisconnect();
-          }),
-    socket(connection::connect(service, endpoint, [&]()
+    assigned(ass), parent(ass->parent)
+{}
+void proxy_server::outbound::perform_connection(ipv4_endpoint endpoint){
+    timer = io::timer::timer_element(parent->ios->getClock(),
+        proxy_server::connectionTimeout,
+        [this]()
+        {
+            LOG("(%d): Connection timeout.", socket->getFd().get_raw());
+            assigned->sendNotFound();
+            socket->forceDisconnect();
+        });
+    socket = std::unique_ptr<connection>(new connection(connection::connect(*parent->ios,endpoint,[&]()
     {
-        LOG("Disconnected from (%d):%s", socket.getFd().get_raw(), remote.to_string().c_str());
-        if (socket.get_available_bytes() != 0) {
-            LOG("(%d): Disconnected with available BYTES!!!", socket.getFd().get_raw());
+        LOG("Disconnected from (%d):%s", socket->getFd().get_raw(),host.c_str());
+        if (socket->get_available_bytes() != 0) {
+            LOG("(%d): Disconnected with available BYTES!!!", socket->getFd().get_raw());
         }
-        if (getSocketError(this->socket.getFd()) != 0) {
+        if (getSocketError(this->socket->getFd()) != 0) {
             assigned->sendBadRequest();
         }
         assigned->assigned.reset();
-    }))
-{
-    host = ass->requ->get_host();
-    URI = ass->requ->get_URI();
-    validateRequest = ass->requ->is_validating();
+    })));
+}
+void proxy_server::outbound::form_request(){
+    assert(socket);
+    host = assigned->requ->get_host();
+    URI = assigned->requ->get_URI();
+    validateRequest = assigned->requ->is_validating();
     cacheHit = parent->proxycache.exists(host + URI);
     if (!validateRequest
         && cacheHit) {
@@ -207,24 +215,24 @@ proxy_server::outbound::outbound(io::io_service &service, ipv4_endpoint endpoint
         auto etag = cache_entry.get_header("ETag");
         LOG("Cache hit: %s", URI.c_str());
         INFO("Validating request");
-        ass->requ->append_header("If-None-Match", etag);
+        assigned->requ->append_header("If-None-Match", etag);
     }
-    output.push(ass->requ->get_request_text());
-    socket.setOn_write(std::bind(&outbound::handlewrite, this));
+    output.push(assigned->requ->get_request_text());
+    socket->setOn_write(std::bind(&outbound::handleWrite, this));
 }
 void proxy_server::outbound::onRead()
 {
-    int n = socket.get_available_bytes();
-//    LOG("Bytes available: %d ", n);
+    assert(socket);
+    size_t n = socket->get_available_bytes();
     char buf[n + 1];
-    ssize_t res = socket.read_over_connection(buf, n);
+    ssize_t res = socket->read_over_connection(buf, n);
     if (res == -1) {
         throw_error(errno, "onRead()");
     }
     if (res == 0) // EOF
     {
-        LOG("(%d):Outbound EOF. Disconnected", socket.getFd().get_raw());
-        socket.forceDisconnect();
+        LOG("(%d):Outbound EOF. Disconnected", socket->getFd().get_raw());
+        socket->forceDisconnect();
         return;
     }
     buf[n] = '\0';
@@ -233,38 +241,40 @@ void proxy_server::outbound::onRead()
         resp = std::make_shared<response>(std::string(buf, n));
     }
     else {
-        resp->add_part({buf, size_t(n)});
+        resp->add_part({buf, n});
     }
-    socket.setOn_read(connection::callback());
+    socket->setOn_read(connection::callback());
     if (resp->get_state() >= HTTP::FIRSTLINE && resp->get_code() == "304" && cacheHit) {//NOT MODIFIED 304
-        LOG("Cache valid (%d):(%s)", socket.getFd().get_raw(), resp->get_code().c_str());
+        LOG("Cache valid (%d):(%s)", socket->getFd().get_raw(), resp->get_code().c_str());
         auto cache_entry = parent->proxycache.get(host + URI);
         outstring out(cache_entry.get_text());
         assigned->trySend(out);
-        socket.setOn_read(std::bind(&outbound::onReadDiscard, this));
+        socket->setOn_read(std::bind(&outbound::onReadDiscard, this));
     }
     else {
         if (cacheHit) {
-            LOG("Couldn't use cache (%d):(%s)", socket.getFd().get_raw(), resp->get_code().c_str());
+            LOG("Couldn't use cache (%d):(%s)", socket->getFd().get_raw(), resp->get_code().c_str());
             cacheHit = false; // we need to re-update cache;
         }
         outstring out(std::string(buf, n));
         assigned->trySend(out);
     }
 }
-void proxy_server::outbound::handlewrite()
+
+void proxy_server::outbound::handleWrite()
 {
+    assert(socket);
     if (!output.empty()) {
         timer.turnOff(); // Connection successful. No need to check connection_timeout
         auto string = &output.front();
-        size_t written = socket.write_over_connection(string->get(), string->size());
+        size_t written = socket->write_over_connection(string->get(), string->size());
         string->operator+=(written);
         if (*string) {
             output.pop();
         }
     }
     if (output.empty()) {
-        socket.setOn_rw(std::bind(&outbound::onRead, this), connection::callback());
+        socket->setOn_rw(std::bind(&outbound::onRead, this), connection::callback());
     }
 }
 proxy_server::inbound::~inbound()
@@ -277,8 +287,6 @@ resolver &proxy_server::getResolver()
 {
     return domainResolver;
 }
-
-
 void proxy_server::outbound::try_to_cache()
 {
     if (resp && resp->is_cacheable() && !cacheHit) {
@@ -290,19 +298,20 @@ void proxy_server::outbound::try_to_cache()
 }
 void proxy_server::outbound::onReadDiscard()
 {
-    int n = socket.get_available_bytes();
-    LOG("Bytes discarded: %d ", n);
+    assert(socket);
+    size_t n = socket->get_available_bytes();
+    LOG("Bytes discarded: %lu ", n);
     char buf[n + 1];
-    ssize_t res = socket.read_over_connection(buf, n);
+    ssize_t res = socket->read_over_connection(buf, n);
     if (res == -1) {
         throw_error(errno, "NestedRead()");
     }
 }
 void proxy_server::outbound::askMore()
 {
-//    LOG("(%d):Inbound socket(%d) requested more data",socket.getFd(),assigned->socket.getFd());
+    assert(socket);
     if (!cacheHit) {
-        socket.setOn_read(std::bind(&outbound::onRead, this));
+        socket->setOn_read(std::bind(&outbound::onRead, this));
     }
 }
 void proxy_server::inbound::trySend(outstring &out)
@@ -310,7 +319,7 @@ void proxy_server::inbound::trySend(outstring &out)
     out += socket.write_over_connection(out.get(), out.size());
     if (!out) {
         output.push(out);
-        socket.setOn_write(std::bind(&inbound::handlewrite, this));
+        socket.setOn_write(std::bind(&inbound::handleWrite, this));
     }
     else if (assigned) assigned->askMore();
 }

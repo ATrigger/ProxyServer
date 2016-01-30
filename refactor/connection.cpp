@@ -68,14 +68,14 @@ void connection::forceDisconnect()
     LOG("Forced disconnect on %d fd", getFd().get_raw());
     on_disconnect();
 }
-int connection::get_available_bytes() const
+size_t connection::get_available_bytes() const
 {
     int n = -1;
     if (ioctl(fd.get_raw(), FIONREAD, &n) < 0) {
         LOG("IOCTL failed: %d. No bytes available. Returning 0", errno);
         return 0;
     }
-    return n;
+    return static_cast<size_t>(n);
 }
 const handle &connection::getFd() const
 {

@@ -55,17 +55,19 @@ class proxy_server
     };
     struct inbound
     {
+        friend struct outbound;
+
         inbound(proxy_server *parent);
         ~inbound();
-        void handleread();
-        void handlewrite();
+        void handleRead();
+        void handleWrite();
         void sendBadRequest();
         void sendNotFound();
         bool onResolve(resolver::resolverNode);
 
     private:
         void trySend(outstring &);
-        friend struct outbound;
+        void wakeUp();
         proxy_server *parent;
         connection socket;
         std::shared_ptr<request> requ;
@@ -73,22 +75,22 @@ class proxy_server
         std::shared_ptr<outbound> assigned;
         io::timer::timer_element timer;
         std::queue<outstring> output;
-        void wakeUp();
     };
     struct outbound
     {
-        outbound(io::io_service &, ipv4_endpoint, inbound *);
+        outbound(inbound *);
         ~outbound();
-        void handlewrite();
+        void handleWrite();
         void onRead();
         void onReadDiscard();
         const std::string getHost();
     private:
         void try_to_cache();
+        void perform_connection(ipv4_endpoint endpoint);
+        void form_request();
         void askMore();
         friend struct inbound;
-        ipv4_endpoint remote;
-        connection socket;
+        std::unique_ptr<connection> socket;
         io::timer::timer_element timer;
         inbound *assigned;
         std::shared_ptr<response> resp;
