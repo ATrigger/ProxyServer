@@ -77,7 +77,7 @@ class proxy_server
     };
     struct outbound
     {
-        outbound(io::io_service &, ipv4_endpoint, inbound *);
+        outbound(inbound *);
         ~outbound();
         void handlewrite();
         void onRead();
@@ -85,10 +85,11 @@ class proxy_server
         const std::string getHost();
     private:
         void try_to_cache();
+        void perform_connection(ipv4_endpoint endpoint);
+        void form_request();
         void askMore();
         friend struct inbound;
-        ipv4_endpoint remote;
-        connection socket;
+        std::unique_ptr<connection> socket;
         io::timer::timer_element timer;
         inbound *assigned;
         std::shared_ptr<response> resp;

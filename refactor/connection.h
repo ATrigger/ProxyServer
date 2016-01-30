@@ -29,7 +29,7 @@ public:
     ~connection();
     ssize_t read_over_connection(void *data, size_t size);
     size_t write_over_connection(void const *data, size_t size);
-    int get_available_bytes() const;
+    size_t get_available_bytes() const;
     static connection connect(io::io_service& ep, ipv4_endpoint const& remote, callback on_disconnect);
     void forceDisconnect();
 protected:
