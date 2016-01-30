@@ -5,7 +5,7 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost REQUIRED COMPONENTS system thread)
 include_directories(${Boost_INCLUDEDIR})
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDEBUG -g -O0 -std=c++11 -fsanitize=address")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DDEBUG -g -O0 -std=c++11")
 set(NEW_SOURCE
         refactor/address.cpp
         refactor/address.h

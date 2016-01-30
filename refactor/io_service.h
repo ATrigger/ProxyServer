@@ -12,7 +12,7 @@
 
 class connection;
 class acceptor;
-#define MAX_EVENTS 100
+#define MAX_EVENTS 1
 namespace io
 {
 class io_entry;

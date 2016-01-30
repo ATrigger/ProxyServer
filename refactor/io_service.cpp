@@ -120,6 +120,7 @@ void io::io_entry::sync()
 }
 io::io_entry::~io_entry()
 {
+    if(parent) parent->removefd(this->fd);
 }
 void io::io_service::setCallback(std::function<int()> function)
 {
